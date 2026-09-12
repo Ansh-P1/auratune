@@ -1,0 +1,29 @@
+# Core DSP / perception
+numpy
+scipy
+librosa
+soundfile
+
+# Optional: real stem separation (falls back to librosa hpss if unavailable)
+torch
+demucs
+
+# Agent pipeline
+langgraph
+langchain-core
+anthropic   # optional: command parsing, explanations, EQ-screenshot reading
+
+# EQ-screenshot reading also supports Google Gemini (free tier) via a plain
+# REST call -- no extra package needed, just set GEMINI_API_KEY.
+
+# Data layer (optional -- falls back to local JSON if unset/unreachable)
+pymongo
+
+# UI
+streamlit
+plotly
+matplotlib
+
+# Live mic capture (optional, for real deployment instead of synth scenarios)
+sounddevice
+streamlit-webrtc
