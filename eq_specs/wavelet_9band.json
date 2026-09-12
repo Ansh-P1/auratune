@@ -1,0 +1,11 @@
+{
+  "name": "Wavelet - Graphic EQ (9-band)",
+  "band_freqs_hz": [62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  "gain_min_db": -12.0,
+  "gain_max_db": 12.0,
+  "step_db": 0.1,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Read from the user's screenshot (WhatsApp Image 2026-09-10 4.37 PM). 9 sliders at 62.5 Hz-16 kHz, values shown to 0.1 dB, no separate preamp on this screen. The dialog covered the top of the axis; range assumed to be Wavelet's standard +/-12 dB - correct in the manual editor if yours differs."
+}
