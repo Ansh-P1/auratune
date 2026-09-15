@@ -85,7 +85,7 @@ def _build_css(dark: bool) -> str:
 html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
 [data-testid="stAppViewContainer"], .stApp { background: var(--at-bg) !important; }
 [data-testid="stHeader"] { background: var(--at-bg) !important; }
-.block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1200px; }
+.block-container { padding-top: 3.5rem; padding-bottom: 3rem; max-width: 1200px; }
 h1 { font-weight: 700 !important; color: var(--at-ink) !important; letter-spacing: -0.02em; }
 h2, h3, h4 { font-weight: 600 !important; color: var(--at-ink) !important; }
 p, span, label, .stMarkdown { color: var(--at-ink); }
@@ -134,7 +134,8 @@ div.stButton > button[kind="primary"]:hover {
     box-shadow: 0 6px 18px rgba(108, 123, 255, 0.45);
 }
 [data-testid="stToggle"] label p { color: var(--at-ink) !important; }
-.stTextInput input, .stNumberInput input, [data-baseweb="select"] > div, .stFileUploader section {
+[data-baseweb="select"], [data-baseweb="select"] * { background: var(--at-card) !important; color: var(--at-ink) !important; }
+.stTextInput input, .stNumberInput input, .stFileUploader section {
     border-radius: 12px !important;
     border-color: var(--at-border) !important;
     background: var(--at-card) !important;
@@ -158,9 +159,11 @@ div.stButton > button[kind="primary"]:hover {
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    padding: 0.15rem 0.6rem;
+    padding: 0.3rem 0.6rem;
     border-radius: 999px;
-    margin-bottom: 0.35rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
 }
 </style>
 """
