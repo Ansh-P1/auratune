@@ -8,8 +8,9 @@ agents themselves.
 """
 from __future__ import annotations
 
-from typing import TypedDict, Any, Optional
+from typing import TypedDict, Any, Dict, Optional
 
+import numpy as np
 from langgraph.graph import StateGraph, END
 
 from data.db import ProfileStore
@@ -18,6 +19,7 @@ from dsp.equalizer_spec import EqualizerSpec
 from dsp.eq_projection import ProjectedEQ
 from perception.context_classifier import Context
 from agents.profile_agent import run_profile_agent
+from agents.genre_agent import run_genre_agent
 from agents.eq_decision_agent import run_eq_decision_agent
 from agents.projection_agent import run_projection_agent
 from agents.explainer_agent import run_explainer_agent
@@ -33,22 +35,34 @@ class PipelineState(TypedDict, total=False):
     decided_curve: TargetCurve
     command_deltas: dict
     context_deltas: dict
+    genre_bucket: Optional[str]
+    genre_confidence: float
+    genre_model_used: str
+    genre_probabilities: Dict[str, float]
+    genre_proxy_features: Dict[str, float]
+    genre_deltas: dict
+    genre_unavailable_reason: str
     projected_eq: Optional[ProjectedEQ]
     eq: ParametricEQ
     explanation: str
 
 
 def build_graph(store: ProfileStore, eq: ParametricEQ,
-                equalizer_spec: Optional[EqualizerSpec] = None):
+                equalizer_spec: Optional[EqualizerSpec] = None,
+                content_audio: Optional[np.ndarray] = None,
+                sample_rate: int = 44100,
+                genre_model: str = "auto"):
     graph = StateGraph(PipelineState)
 
     graph.add_node("profile_agent", lambda s: run_profile_agent(s, store))
+    graph.add_node("genre_agent", lambda s: run_genre_agent(s, content_audio, sample_rate, genre_model))
     graph.add_node("eq_decision_agent", run_eq_decision_agent)
     graph.add_node("projection_agent", lambda s: run_projection_agent(s, eq, equalizer_spec))
     graph.add_node("explainer_agent", lambda s: run_explainer_agent(s, eq))
 
     graph.set_entry_point("profile_agent")
-    graph.add_edge("profile_agent", "eq_decision_agent")
+    graph.add_edge("profile_agent", "genre_agent")
+    graph.add_edge("genre_agent", "eq_decision_agent")
     graph.add_edge("eq_decision_agent", "projection_agent")
     graph.add_edge("projection_agent", "explainer_agent")
     graph.add_edge("explainer_agent", END)
@@ -63,9 +77,18 @@ def run_pipeline(
     context: Context,
     user_command: str = "",
     equalizer_spec: Optional[EqualizerSpec] = None,
+    content_audio: Optional[np.ndarray] = None,
+    sample_rate: int = 44100,
+    genre_model: str = "auto",
 ) -> PipelineState:
-    """Convenience one-shot call used by the Streamlit app and validation script."""
-    app = build_graph(store, eq, equalizer_spec)
+    """Convenience one-shot call used by the Streamlit app and validation script.
+
+    content_audio: the currently-playing content buffer, used only by the
+    Genre agent (see agents/genre_agent.py) to run the local genre/mood
+    classifier when context.content_type == "music". Optional -- omit it
+    and the pipeline behaves exactly as before genre classification existed.
+    """
+    app = build_graph(store, eq, equalizer_spec, content_audio, sample_rate, genre_model)
     result = app.invoke({
         "user_id": user_id,
         "context": context,
@@ -98,6 +121,9 @@ def run_pipeline(
         "explanation": result["explanation"],
         "context_deltas": result["context_deltas"],
         "command_deltas": result["command_deltas"],
+        "genre_bucket": result.get("genre_bucket"),
+        "genre_confidence": result.get("genre_confidence"),
+        "genre_deltas": result.get("genre_deltas"),
         "projected_eq": projected.to_dict() if projected is not None else None,
     })
     return result
