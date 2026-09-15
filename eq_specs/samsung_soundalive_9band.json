@@ -1,0 +1,11 @@
+{
+  "name": "Samsung Galaxy SoundAlive (9-band)",
+  "band_freqs_hz": [63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  "gain_min_db": -10.0,
+  "gain_max_db": 10.0,
+  "step_db": 1.0,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Samsung Galaxy One UI stock SoundAlive equalizer (Settings > Sound quality and effects). 9 octave bands from 63 Hz to 16 kHz with +/-10 dB gain range in 1 dB steps."
+}

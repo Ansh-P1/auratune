@@ -1,0 +1,11 @@
+{
+  "name": "Anker Soundcore App (8-band)",
+  "band_freqs_hz": [100, 200, 400, 800, 1600, 3200, 6400, 12800],
+  "gain_min_db": -6.0,
+  "gain_max_db": 6.0,
+  "step_db": 0.5,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Anker Soundcore companion app custom equalizer (Space Q45, Liberty 4, Life Q30). 8 octaves from 100 Hz to 12.8 kHz with +/-6 dB range and 0.5 dB step granularity."
+}
