@@ -35,6 +35,92 @@ st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide")
 SR = 44100
 USER_ID = "demo_user"
 
+# ---------------------------------------------------------------------------
+# Visual theme -- soft, minimalist, light. Colors/typography also configured
+# in .streamlit/config.toml; this fills in what the theme API can't reach
+# (card containers, metric tiles, buttons, chips) with the same palette.
+# ---------------------------------------------------------------------------
+_AURATUNE_CSS = """
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --at-primary: #6C7BFF;
+    --at-primary-soft: #EEF0FF;
+    --at-accent: #F5A56B;
+    --at-accent-soft: #FFF3E9;
+    --at-ink: #2D3142;
+    --at-muted: #767B93;
+    --at-card: #FFFFFF;
+    --at-border: #EAECF5;
+}
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+.block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1200px; }
+h1 { font-weight: 700 !important; color: var(--at-ink) !important; letter-spacing: -0.02em; }
+h2, h3 { font-weight: 600 !important; color: var(--at-ink) !important; }
+[data-testid="stCaptionContainer"] { color: var(--at-muted) !important; }
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid var(--at-border) !important;
+    border-radius: 18px !important;
+    background: var(--at-card);
+    box-shadow: 0 2px 10px rgba(45, 49, 66, 0.04);
+    padding: 0.25rem 0.25rem;
+    margin-bottom: 1rem;
+}
+[data-testid="stMetric"] {
+    background: var(--at-primary-soft);
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--at-border);
+}
+[data-testid="stMetricLabel"] { color: var(--at-muted) !important; }
+[data-testid="stMetricValue"] {
+    color: var(--at-ink) !important;
+    font-weight: 700 !important;
+    font-size: 1.05rem !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.3 !important;
+    word-break: break-word !important;
+}
+div.stButton > button {
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    border: none !important;
+}
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #6C7BFF 0%, #8A7BFF 100%) !important;
+    box-shadow: 0 4px 14px rgba(108, 123, 255, 0.35);
+}
+div.stButton > button[kind="primary"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(108, 123, 255, 0.45);
+}
+div.stButton > button:not([kind="primary"]) { background: var(--at-primary-soft) !important; color: var(--at-ink) !important; }
+.stTextInput input, .stNumberInput input, [data-baseweb="select"] > div, .stFileUploader section {
+    border-radius: 12px !important;
+    border-color: var(--at-border) !important;
+}
+[data-testid="stAlert"] { border-radius: 14px !important; }
+[data-testid="stExpander"] { border-radius: 14px !important; border-color: var(--at-border) !important; overflow: hidden; }
+[data-testid="stTable"] { border-radius: 12px; overflow: hidden; }
+.at-chip {
+    display: inline-block;
+    background: var(--at-accent-soft);
+    color: #B5652A;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 0.35rem;
+}
+</style>
+"""
+st.markdown(_AURATUNE_CSS, unsafe_allow_html=True)
+
 
 @st.cache_resource
 def get_store():
@@ -49,6 +135,38 @@ def get_eq():
 def _slugify(name: str) -> str:
     keep = [c.lower() if c.isalnum() else "_" for c in name]
     return "".join(keep).strip("_") or "custom_eq"
+
+
+_MODEL_DISPLAY_NAMES = {
+    "gradient_boosting": "Gradient Boost",
+    "neural_net": "Neural Net",
+    "logistic_regression": "Logistic Reg.",
+}
+_GENRE_DISPLAY_NAMES = {
+    "electronic_dance": "Electronic",
+    "rock_metal": "Rock / Metal",
+    "hiphop_rnb": "Hip-Hop / R&B",
+    "pop": "Pop",
+    "acoustic_folk": "Acoustic",
+    "classical_jazz": "Classical / Jazz",
+    "chill_ambient": "Chill",
+    "world_latin": "World / Latin",
+}
+# Shorter single-word labels for the probability bar chart, where multi-word
+# labels wrap/clip on the narrow rotated category axis.
+_GENRE_CHART_NAMES = {
+    "electronic_dance": "Electronic", "rock_metal": "Rock", "hiphop_rnb": "Hip-Hop",
+    "pop": "Pop", "acoustic_folk": "Acoustic", "classical_jazz": "Classical",
+    "chill_ambient": "Chill", "world_latin": "World",
+}
+
+
+def _model_label(name: str) -> str:
+    return _MODEL_DISPLAY_NAMES.get(name, name)
+
+
+def _genre_label(bucket: str) -> str:
+    return _GENRE_DISPLAY_NAMES.get(bucket, bucket.replace("_", " / "))
 
 
 @st.cache_data(show_spinner="Reading your EQ screenshot…")
@@ -105,7 +223,7 @@ def _num(x: float) -> str:
 
 def eq_spec_picker() -> EqualizerSpec | None:
     """Pick a built-in / saved spec, upload a screenshot, or build one by hand."""
-    st.subheader("Your EQ app")
+    st.subheader("🎧 Your EQ app")
     specs = all_specs()
     saved = list(specs.keys())
     options = ["📷 Upload a screenshot…"] + saved + ["Manual…", "(none — just show the curve)"]
@@ -173,51 +291,53 @@ def eq_spec_picker() -> EqualizerSpec | None:
     return _spec_editor(detected, key="upload")
 
 
+st.markdown('<span class="at-chip">🎧 Adaptive Audio Personalization</span>', unsafe_allow_html=True)
 st.title("AuraTune")
-st.caption("Adaptive Audio Personalization Engine — perception → 3-agent LangGraph → your EQ")
+st.caption("Perception → 3-agent LangGraph → your EQ, explained in plain English")
 
-col_left, col_right = st.columns([1, 1.4])
+col_left, col_right = st.columns([1, 1.4], gap="medium")
 
 with col_left:
-    st.subheader("Scenario")
-    scenario_key = st.selectbox(
-        "Simulated context",
-        list(SCENARIO_LABELS.keys()),
-        format_func=lambda k: SCENARIO_LABELS[k],
-    )
-    user_command = st.text_input(
-        "Live command (optional)",
-        placeholder="e.g. make voices clearer, less bass",
-    )
-
-    if genre_classifier.available():
-        model_options = ["auto (best)"] + genre_classifier.list_models()
-        genre_model_choice = st.selectbox(
-            "Genre model (local ML)", model_options,
-            help="For music content, locally classifies the genre/mood into "
-                 "one of 8 buckets and leans the EQ curve accordingly. "
-                 "Trained on the 114k-track Spotify dataset -- see ml/README.md.",
+    with st.container(border=True):
+        st.subheader("🎬 Scenario")
+        scenario_key = st.selectbox(
+            "Simulated context",
+            list(SCENARIO_LABELS.keys()),
+            format_func=lambda k: SCENARIO_LABELS[k],
         )
-        genre_model_name = "auto" if genre_model_choice.startswith("auto") else genre_model_choice
-    else:
-        genre_model_name = "auto"
-        st.caption("No trained genre model found — run `python ml/train.py` "
-                   "once to enable local ML genre-aware EQ tuning.")
+        user_command = st.text_input(
+            "Live command (optional)",
+            placeholder="e.g. make voices clearer, less bass",
+        )
 
-    st.divider()
-    eq_spec = eq_spec_picker()
+        if genre_classifier.available():
+            model_options = ["auto (best)"] + genre_classifier.list_models()
+            genre_model_choice = st.selectbox(
+                "Genre model (local ML)", model_options,
+                format_func=lambda k: k if k.startswith("auto") else _model_label(k),
+                help="For music content, locally classifies the genre/mood into "
+                     "one of 8 buckets and leans the EQ curve accordingly. "
+                     "Trained on the 114k-track Spotify dataset -- see ml/README.md.",
+            )
+            genre_model_name = "auto" if genre_model_choice.startswith("auto") else genre_model_choice
+        else:
+            genre_model_name = "auto"
+            st.caption("No trained genre model found — run `python ml/train.py` "
+                       "once to enable local ML genre-aware EQ tuning.")
 
-    st.divider()
-    run_clicked = st.button("Run adaptation", type="primary")
+    with st.container(border=True):
+        eq_spec = eq_spec_picker()
 
-    st.divider()
-    st.subheader("History")
-    store = get_store()
-    history = store.get_history(USER_ID, limit=8)
-    if not history:
-        st.caption("No adjustments logged yet.")
-    for h in reversed(history):
-        st.markdown(f"- **{h['content_type']}** / {h['noise_level']} — {h['explanation']}")
+    run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
+
+    with st.container(border=True):
+        st.subheader("🕘 History")
+        store = get_store()
+        history = store.get_history(USER_ID, limit=8)
+        if not history:
+            st.caption("No adjustments logged yet.")
+        for h in reversed(history):
+            st.markdown(f"- **{h['content_type']}** / {h['noise_level']} — {h['explanation']}")
 
 with col_right:
     if run_clicked:
@@ -231,68 +351,77 @@ with col_right:
                                   equalizer_spec=eq_spec, content_audio=content,
                                   sample_rate=SR, genre_model=genre_model_name)
 
-        st.subheader("Detected context")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Noise level", ctx.noise_level)
-        c2.metric("Content type", ctx.content_type)
-        c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
+        with st.container(border=True):
+            st.subheader("📡 Detected context")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Noise level", ctx.noise_level)
+            c2.metric("Content type", ctx.content_type)
+            c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
 
         proj = result.get("projected_eq")
 
         if result.get("genre_bucket"):
-            st.subheader("Detected genre (local ML model)")
-            g1, g2, g3 = st.columns(3)
-            g1.metric("Genre bucket", result["genre_bucket"].replace("_", " / "))
-            g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
-            g3.metric("Model used", result.get("genre_model_used", "-"))
-            probs = result.get("genre_probabilities") or {}
-            if probs:
-                st.bar_chart(dict(sorted(probs.items(), key=lambda kv: -kv[1])))
+            with st.container(border=True):
+                st.subheader("🎼 Detected genre (local ML model)")
+                g1, g2, g3 = st.columns(3)
+                g1.metric("Genre bucket", _genre_label(result["genre_bucket"]))
+                g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
+                g3.metric("Model used", _model_label(result.get("genre_model_used", "-")))
+                probs = result.get("genre_probabilities") or {}
+                if probs:
+                    labeled = {_GENRE_CHART_NAMES.get(k, k): v for k, v in
+                              sorted(probs.items(), key=lambda kv: -kv[1])}
+                    st.bar_chart(labeled, color="#6C7BFF")
         elif result.get("genre_unavailable_reason"):
             st.caption(f"Genre model unavailable: {result['genre_unavailable_reason']}")
 
-        st.subheader("Live EQ curve")
-        freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
-        freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
+        with st.container(border=True):
+            st.subheader("📈 Live EQ curve")
+            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
+            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
-                                  line=dict(dash="dash", color="gray")))
-        fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
-                                  line=dict(color="#2E86AB", width=3)))
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
+                                      line=dict(dash="dash", color="#C7CBDE")))
+            fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
+                                      line=dict(color="#6C7BFF", width=3)))
+            if proj is not None:
+                fig.add_trace(go.Scatter(
+                    x=[b.freq_hz for b in proj.bands],
+                    y=[b.set_gain_db for b in proj.bands],
+                    name=f"{proj.spec_name} sliders",
+                    mode="markers+lines",
+                    line=dict(color="#F5A56B", width=1, dash="dot"),
+                    marker=dict(size=10, color="#F5A56B"),
+                ))
+            fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor="#EEF0F7")
+            fig.update_yaxes(title="Gain (dB)", gridcolor="#EEF0F7")
+            fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
+                               legend=dict(orientation="h", y=1.1),
+                               plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
+                               font=dict(family="Inter, sans-serif", color="#2D3142"))
+            st.plotly_chart(fig, use_container_width=True)
+
         if proj is not None:
-            fig.add_trace(go.Scatter(
-                x=[b.freq_hz for b in proj.bands],
-                y=[b.set_gain_db for b in proj.bands],
-                name=f"{proj.spec_name} sliders",
-                mode="markers+lines",
-                line=dict(color="#E8871E", width=1, dash="dot"),
-                marker=dict(size=10, color="#E8871E"),
-            ))
-        fig.update_xaxes(type="log", title="Frequency (Hz)")
-        fig.update_yaxes(title="Gain (dB)")
-        fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
-                           legend=dict(orientation="h", y=1.1))
-        st.plotly_chart(fig, use_container_width=True)
+            with st.container(border=True):
+                st.subheader(f"🎯 Set these on {proj.spec_name}")
+                st.table(proj.as_table_rows())
+                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
+                if proj.clipped_freqs:
+                    note += (" Some bands hit the app's range limit — that's the closest "
+                             "it can get.")
+                if not proj.has_preamp:
+                    note += ("  *This app has no preamp; the value is how much to lower the "
+                             "media/app volume so the boosts don't clip.")
+                st.caption(note)
 
-        if proj is not None:
-            st.subheader(f"Set these on {proj.spec_name}")
-            st.table(proj.as_table_rows())
-            note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
-            if proj.clipped_freqs:
-                note += (" Some bands hit the app's range limit — that's the closest "
-                         "it can get.")
-            if not proj.has_preamp:
-                note += ("  *This app has no preamp; the value is how much to lower the "
-                         "media/app volume so the boosts don't clip.")
-            st.caption(note)
+                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
+                st.download_button("⬇  Download these settings (.txt)", txt,
+                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
 
-            txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
-            st.download_button("Download these settings (.txt)", txt,
-                               file_name=f"{_slugify(proj.spec_name)}_settings.txt")
-
-        st.subheader("Explanation")
-        st.info(result["explanation"])
+        with st.container(border=True):
+            st.subheader("💬 Explanation")
+            st.info(result["explanation"])
 
         with st.expander("Raw deltas (debug)"):
             dbg = {
@@ -306,4 +435,7 @@ with col_right:
                 dbg["projected_eq"] = proj.to_dict()
             st.json(dbg)
     else:
-        st.caption("Pick a scenario, choose your EQ app, and click **Run adaptation**.")
+        with st.container(border=True):
+            st.markdown("#### 👋 Ready when you are")
+            st.caption("Pick a scenario, choose your EQ app on the left, and click "
+                       "**Run adaptation** to see the live curve and explanation appear here.")
