@@ -17,6 +17,7 @@ import re
 from dataclasses import replace
 
 from dsp.parametric_eq import TargetCurve
+from dsp.genre_curves import GENRE_CURVES, GENRE_BLEND_WEIGHT
 from agents.llm_client import complete
 from config import MAX_GAIN_DB
 
@@ -83,6 +84,23 @@ def run_eq_decision_agent(state: dict) -> dict:
         bass_gain_db=baseline.bass_gain_db + bass_delta,
     )
 
+    # Genre agent runs upstream (agents/genre_agent.py) only for music
+    # content; blend its bucket's tuned deltas in, scaled by both the
+    # fixed GENRE_BLEND_WEIGHT and the classifier's own confidence, so a
+    # shaky prediction can only nudge the curve, not dominate it.
+    genre_bucket = state.get("genre_bucket")
+    genre_deltas = {}
+    if genre_bucket in GENRE_CURVES:
+        weight = GENRE_BLEND_WEIGHT * state.get("genre_confidence", 0.0)
+        bass_d, presence_d, treble_d = GENRE_CURVES[genre_bucket]
+        genre_deltas = {
+            "bass_gain_db": round(bass_d * weight, 2),
+            "presence_gain_db": round(presence_d * weight, 2),
+            "treble_gain_db": round(treble_d * weight, 2),
+        }
+        for key, delta in genre_deltas.items():
+            setattr(decided, key, getattr(decided, key) + delta)
+
     command_deltas = {}
     if command:
         command_deltas = _llm_command_parse(command)
@@ -97,4 +115,5 @@ def run_eq_decision_agent(state: dict) -> dict:
     state["decided_curve"] = decided
     state["command_deltas"] = command_deltas
     state["context_deltas"] = {"presence_gain_db": presence_delta, "bass_gain_db": bass_delta}
+    state["genre_deltas"] = genre_deltas
     return state
