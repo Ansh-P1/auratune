@@ -1,0 +1,11 @@
+{
+  "name": "Sony Headphones Connect (5-band)",
+  "band_freqs_hz": [400, 1000, 2400, 6300, 16000],
+  "gain_min_db": -10.0,
+  "gain_max_db": 10.0,
+  "step_db": 1.0,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Sony Headphones Connect companion app graphic EQ (WH-1000XM4/XM5, WF-1000XM4/XM5). 5 discrete sliders at 400 Hz, 1 kHz, 2.4 kHz, 6.3 kHz, 16 kHz with +/-10 dB range in 1 dB steps."
+}
