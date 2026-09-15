@@ -26,6 +26,7 @@ from dsp.equalizer_spec import EqualizerSpec, all_specs, save_spec
 from perception.eq_app_reader import read_equalizer_screenshot
 from perception.context_classifier import classify, Context
 from perception.synth_scenarios import synth_scenario, SCENARIOS as SCENARIO_LABELS, SCENARIO_CONTENT_TYPE
+from perception import genre_classifier
 from data.db import ProfileStore
 from agents.graph import run_pipeline
 
@@ -189,6 +190,20 @@ with col_left:
         placeholder="e.g. make voices clearer, less bass",
     )
 
+    if genre_classifier.available():
+        model_options = ["auto (best)"] + genre_classifier.list_models()
+        genre_model_choice = st.selectbox(
+            "Genre model (local ML)", model_options,
+            help="For music content, locally classifies the genre/mood into "
+                 "one of 8 buckets and leans the EQ curve accordingly. "
+                 "Trained on the 114k-track Spotify dataset -- see ml/README.md.",
+        )
+        genre_model_name = "auto" if genre_model_choice.startswith("auto") else genre_model_choice
+    else:
+        genre_model_name = "auto"
+        st.caption("No trained genre model found — run `python ml/train.py` "
+                   "once to enable local ML genre-aware EQ tuning.")
+
     st.divider()
     eq_spec = eq_spec_picker()
 
@@ -213,7 +228,8 @@ with col_right:
 
         with st.spinner("Running perception → agents → DSP…"):
             result = run_pipeline(store, eq, USER_ID, ctx, user_command,
-                                  equalizer_spec=eq_spec)
+                                  equalizer_spec=eq_spec, content_audio=content,
+                                  sample_rate=SR, genre_model=genre_model_name)
 
         st.subheader("Detected context")
         c1, c2, c3 = st.columns(3)
@@ -222,6 +238,18 @@ with col_right:
         c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
 
         proj = result.get("projected_eq")
+
+        if result.get("genre_bucket"):
+            st.subheader("Detected genre (local ML model)")
+            g1, g2, g3 = st.columns(3)
+            g1.metric("Genre bucket", result["genre_bucket"].replace("_", " / "))
+            g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
+            g3.metric("Model used", result.get("genre_model_used", "-"))
+            probs = result.get("genre_probabilities") or {}
+            if probs:
+                st.bar_chart(dict(sorted(probs.items(), key=lambda kv: -kv[1])))
+        elif result.get("genre_unavailable_reason"):
+            st.caption(f"Genre model unavailable: {result['genre_unavailable_reason']}")
 
         st.subheader("Live EQ curve")
         freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
@@ -270,6 +298,8 @@ with col_right:
             dbg = {
                 "context_deltas": result["context_deltas"],
                 "command_deltas": result["command_deltas"],
+                "genre_deltas": result.get("genre_deltas"),
+                "genre_proxy_features": result.get("genre_proxy_features"),
                 "decided_curve": result["decided_curve"].to_dict(),
             }
             if proj is not None:
