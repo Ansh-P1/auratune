@@ -56,7 +56,7 @@ def _build_css(dark: bool) -> str:
     --at-accent: #FFB37E;
     --at-accent-soft: #3A2A1E;
     --at-ink: #E7E9F5;
-    --at-muted: #9AA0C3;
+    --at-muted: #C5CAE9;
     --at-card: #1B1E30;
     --at-border: #2D3150;
     --at-bg: #12141F;
@@ -88,9 +88,14 @@ html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
 .block-container { padding-top: 3.5rem; padding-bottom: 3rem; max-width: 1200px; }
 h1 { font-weight: 700 !important; color: var(--at-ink) !important; letter-spacing: -0.02em; }
 h2, h3, h4 { font-weight: 600 !important; color: var(--at-ink) !important; }
-p, span, label, .stMarkdown { color: var(--at-ink); }
-[data-testid="stCaptionContainer"] { color: var(--at-muted) !important; }
+p, span, label, .stMarkdown, small, div, li { color: var(--at-ink); }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * ,
+small, [data-testid="stMarkdownContainer"] em, .stCaption {
+    color: var(--at-muted) !important;
+}
 [data-testid="stWidgetLabel"] p { color: var(--at-ink) !important; }
+[data-testid="stTooltipIcon"] { color: var(--at-muted) !important; }
+[data-testid="stMarkdownContainer"] { color: var(--at-ink); }
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid var(--at-border) !important;
     border-radius: 18px !important;
