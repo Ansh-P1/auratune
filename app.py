@@ -35,15 +35,36 @@ st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide")
 SR = 44100
 USER_ID = "demo_user"
 
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+DARK = st.session_state.dark_mode
+
 # ---------------------------------------------------------------------------
-# Visual theme -- soft, minimalist, light. Colors/typography also configured
-# in .streamlit/config.toml; this fills in what the theme API can't reach
-# (card containers, metric tiles, buttons, chips) with the same palette.
+# Visual theme -- soft, minimalist, with a light/dark toggle (see the
+# toggle widget near the title). .streamlit/config.toml sets the base
+# Streamlit theme (fixed at server start, can't change at runtime); this
+# CSS layer is what actually switches on the fly, driven by
+# st.session_state.dark_mode. __VARS__/__CHIP_COLOR__/__SHADOW__ are
+# plain string placeholders (not an f-string) so the CSS itself never
+# needs its braces escaped.
 # ---------------------------------------------------------------------------
-_AURATUNE_CSS = """
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-:root {
+def _build_css(dark: bool) -> str:
+    if dark:
+        vars_css = """
+    --at-primary: #8B93FF;
+    --at-primary-soft: #262A46;
+    --at-accent: #FFB37E;
+    --at-accent-soft: #3A2A1E;
+    --at-ink: #E7E9F5;
+    --at-muted: #9AA0C3;
+    --at-card: #1B1E30;
+    --at-border: #2D3150;
+    --at-bg: #12141F;
+"""
+        chip_color = "#FFB37E"
+        shadow = "0 2px 14px rgba(0, 0, 0, 0.35)"
+    else:
+        vars_css = """
     --at-primary: #6C7BFF;
     --at-primary-soft: #EEF0FF;
     --at-accent: #F5A56B;
@@ -52,17 +73,29 @@ _AURATUNE_CSS = """
     --at-muted: #767B93;
     --at-card: #FFFFFF;
     --at-border: #EAECF5;
-}
+    --at-bg: #FAFBFE;
+"""
+        chip_color = "#B5652A"
+        shadow = "0 2px 10px rgba(45, 49, 66, 0.04)"
+
+    template = """
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root __VARS__
 html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+[data-testid="stAppViewContainer"], .stApp { background: var(--at-bg) !important; }
+[data-testid="stHeader"] { background: var(--at-bg) !important; }
 .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1200px; }
 h1 { font-weight: 700 !important; color: var(--at-ink) !important; letter-spacing: -0.02em; }
-h2, h3 { font-weight: 600 !important; color: var(--at-ink) !important; }
+h2, h3, h4 { font-weight: 600 !important; color: var(--at-ink) !important; }
+p, span, label, .stMarkdown { color: var(--at-ink); }
 [data-testid="stCaptionContainer"] { color: var(--at-muted) !important; }
+[data-testid="stWidgetLabel"] p { color: var(--at-ink) !important; }
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid var(--at-border) !important;
     border-radius: 18px !important;
     background: var(--at-card);
-    box-shadow: 0 2px 10px rgba(45, 49, 66, 0.04);
+    box-shadow: __SHADOW__;
     padding: 0.25rem 0.25rem;
     margin-bottom: 1rem;
 }
@@ -83,32 +116,44 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     line-height: 1.3 !important;
     word-break: break-word !important;
 }
-div.stButton > button {
+div.stButton > button, div.stDownloadButton > button {
     border-radius: 12px !important;
     font-weight: 600 !important;
     transition: transform 0.12s ease, box-shadow 0.12s ease;
     border: none !important;
+    background: var(--at-primary-soft) !important;
+    color: var(--at-ink) !important;
 }
 div.stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #6C7BFF 0%, #8A7BFF 100%) !important;
     box-shadow: 0 4px 14px rgba(108, 123, 255, 0.35);
+    color: #ffffff !important;
 }
 div.stButton > button[kind="primary"]:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(108, 123, 255, 0.45);
 }
-div.stButton > button:not([kind="primary"]) { background: var(--at-primary-soft) !important; color: var(--at-ink) !important; }
+[data-testid="stToggle"] label p { color: var(--at-ink) !important; }
 .stTextInput input, .stNumberInput input, [data-baseweb="select"] > div, .stFileUploader section {
     border-radius: 12px !important;
     border-color: var(--at-border) !important;
+    background: var(--at-card) !important;
+    color: var(--at-ink) !important;
 }
-[data-testid="stAlert"] { border-radius: 14px !important; }
-[data-testid="stExpander"] { border-radius: 14px !important; border-color: var(--at-border) !important; overflow: hidden; }
+[data-baseweb="popover"] li, [data-baseweb="menu"] { background: var(--at-card) !important; color: var(--at-ink) !important; }
+[data-baseweb="popover"] li:hover { background: var(--at-primary-soft) !important; }
+[data-testid="stAlert"] { border-radius: 14px !important; background: var(--at-primary-soft) !important; color: var(--at-ink) !important; }
+[data-testid="stExpander"] { border-radius: 14px !important; border-color: var(--at-border) !important; overflow: hidden; background: var(--at-card) !important; }
+[data-testid="stExpander"] summary { color: var(--at-ink) !important; }
 [data-testid="stTable"] { border-radius: 12px; overflow: hidden; }
+[data-testid="stTable"] table, [data-testid="stTable"] th, [data-testid="stTable"] td {
+    background: var(--at-card) !important; color: var(--at-ink) !important; border-color: var(--at-border) !important;
+}
+[data-testid="stArrowVegaLiteChart"] { background: #ffffff !important; border-radius: 10px; padding: 8px; }
 .at-chip {
     display: inline-block;
     background: var(--at-accent-soft);
-    color: #B5652A;
+    color: __CHIP_COLOR__;
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -119,7 +164,12 @@ div.stButton > button:not([kind="primary"]) { background: var(--at-primary-soft)
 }
 </style>
 """
-st.markdown(_AURATUNE_CSS, unsafe_allow_html=True)
+    return (template.replace("__VARS__", "{" + vars_css + "}")
+                    .replace("__SHADOW__", shadow)
+                    .replace("__CHIP_COLOR__", chip_color))
+
+
+st.markdown(_build_css(DARK), unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -291,7 +341,11 @@ def eq_spec_picker() -> EqualizerSpec | None:
     return _spec_editor(detected, key="upload")
 
 
-st.markdown('<span class="at-chip">🎧 Adaptive Audio Personalization</span>', unsafe_allow_html=True)
+top_l, top_r = st.columns([6, 1])
+with top_l:
+    st.markdown('<span class="at-chip">🎧 Adaptive Audio Personalization</span>', unsafe_allow_html=True)
+with top_r:
+    st.toggle("🌙 Dark", key="dark_mode")
 st.title("AuraTune")
 st.caption("Perception → 3-agent LangGraph → your EQ, explained in plain English")
 
@@ -380,11 +434,17 @@ with col_right:
             freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
             freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
 
+            curve_color = "#8B93FF" if DARK else "#6C7BFF"
+            baseline_color = "#454A6E" if DARK else "#C7CBDE"
+            grid_color = "#2D3150" if DARK else "#EEF0F7"
+            plot_bg = "#1B1E30" if DARK else "white"
+            text_color = "#E7E9F5" if DARK else "#2D3142"
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
-                                      line=dict(dash="dash", color="#C7CBDE")))
+                                      line=dict(dash="dash", color=baseline_color)))
             fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
-                                      line=dict(color="#6C7BFF", width=3)))
+                                      line=dict(color=curve_color, width=3)))
             if proj is not None:
                 fig.add_trace(go.Scatter(
                     x=[b.freq_hz for b in proj.bands],
@@ -394,12 +454,12 @@ with col_right:
                     line=dict(color="#F5A56B", width=1, dash="dot"),
                     marker=dict(size=10, color="#F5A56B"),
                 ))
-            fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor="#EEF0F7")
-            fig.update_yaxes(title="Gain (dB)", gridcolor="#EEF0F7")
+            fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor=grid_color)
+            fig.update_yaxes(title="Gain (dB)", gridcolor=grid_color)
             fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
                                legend=dict(orientation="h", y=1.1),
-                               plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
-                               font=dict(family="Inter, sans-serif", color="#2D3142"))
+                               plot_bgcolor=plot_bg, paper_bgcolor="rgba(0,0,0,0)",
+                               font=dict(family="Inter, sans-serif", color=text_color))
             st.plotly_chart(fig, use_container_width=True)
 
         if proj is not None:
