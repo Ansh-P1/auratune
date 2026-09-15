@@ -15,19 +15,23 @@ from agents.llm_client import complete
 def _template_sentence(state: dict) -> str:
     ctx = state["context"]
     deltas = state["eq"].delta(state["baseline_curve"], state["decided_curve"])
+    # Small threshold, not a strict 0 check -- a delta that's nonzero but
+    # rounds to "0.0" at 1 decimal (e.g. -0.02) would otherwise still get
+    # announced ("pulled bass back 0.0 dB"), which reads like a bug.
+    eps = 0.05
     bits = []
-    if deltas["presence_gain_db"] > 0:
+    if deltas["presence_gain_db"] > eps:
         bits.append(f"boosted vocal clarity by {deltas['presence_gain_db']:.1f} dB")
-    elif deltas["presence_gain_db"] < 0:
+    elif deltas["presence_gain_db"] < -eps:
         bits.append(f"eased vocal presence by {abs(deltas['presence_gain_db']):.1f} dB")
-    if deltas["bass_gain_db"] < 0:
+    if deltas["bass_gain_db"] < -eps:
         bits.append(f"pulled bass back {abs(deltas['bass_gain_db']):.1f} dB")
-    elif deltas["bass_gain_db"] > 0:
+    elif deltas["bass_gain_db"] > eps:
         bits.append(f"added {deltas['bass_gain_db']:.1f} dB of bass")
-    if deltas["treble_gain_db"] != 0:
+    if abs(deltas["treble_gain_db"]) > eps:
         direction = "brightened" if deltas["treble_gain_db"] > 0 else "warmed"
         bits.append(f"{direction} treble by {abs(deltas['treble_gain_db']):.1f} dB")
-    if deltas["volume_db"] != 0:
+    if abs(deltas["volume_db"]) > eps:
         direction = "raised" if deltas["volume_db"] > 0 else "lowered"
         bits.append(f"{direction} volume {abs(deltas['volume_db']):.1f} dB")
 
