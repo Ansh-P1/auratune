@@ -44,7 +44,8 @@ def main():
     for key, label in SCENARIOS:
         ambient, content = synth_scenario(key, SR)
         ctx = classify(ambient, content, SR, content_type_hint=SCENARIO_CONTENT_TYPE[key])
-        result = run_pipeline(store, eq, user_id="validation_user", context=ctx, user_command="")
+        result = run_pipeline(store, eq, user_id="validation_user", context=ctx, user_command="",
+                              content_audio=content, sample_rate=SR)
 
         freqs, mag_before = eq.frequency_response(result["baseline_curve"])
         _, mag_after = eq.frequency_response(result["decided_curve"])
@@ -67,6 +68,9 @@ def main():
         report_lines.append(f"- Detected: noise=`{ctx.noise_level}`, content=`{ctx.content_type}`, "
                              f"ambient={ctx.ambient_rms_db} dB")
         report_lines.append(f"- Deltas: {deltas}")
+        if result.get("genre_bucket"):
+            report_lines.append(f"- Genre (local ML, {result.get('genre_model_used')}): "
+                                 f"`{result['genre_bucket']}` ({result.get('genre_confidence', 0) * 100:.0f}% confidence)")
         report_lines.append(f"- Explanation: \"{result['explanation']}\"")
         report_lines.append(f"- Curve plot: `{fig_path.name}`\n")
 
