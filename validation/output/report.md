@@ -7,14 +7,14 @@
 - Curve plot: `quiet_podcast.png`
 
 ## Noisy environment + music
-- Detected: noise=`noisy`, content=`music`, ambient=-21.9 dB
-- Deltas: {'volume_db': 0.0, 'bass_gain_db': -2.24, 'presence_gain_db': 0.0, 'treble_gain_db': -0.52}
+- Detected: noise=`noisy`, content=`music`, ambient=-22.0 dB
+- Deltas: {'volume_db': 0.0, 'bass_gain_db': -0.26, 'presence_gain_db': 0.0, 'treble_gain_db': -0.52}
 - Genre (local ML, gradient_boosting): `chill_ambient` (74% confidence)
-- Explanation: "Because of a noisy environment during music, I pulled bass back 2.2 dB, warmed treble by 0.5 dB. Sounds like chill/ambient (74% confidence, local gradient_boosting model), so I leaned the curve that way."
+- Explanation: "Because of a noisy environment during music, I pulled bass back 0.3 dB, warmed treble by 0.5 dB. Sounds like chill/ambient (74% confidence, local gradient_boosting model), so I leaned the curve that way."
 - Curve plot: `noisy_music.png`
 
 ## Home + movie
 - Detected: noise=`moderate`, content=`movie`, ambient=-36.5 dB
-- Deltas: {'volume_db': 0.0, 'bass_gain_db': -1.0, 'presence_gain_db': 1.5, 'treble_gain_db': 0.0}
-- Explanation: "Because of a moderate environment during movie, I boosted vocal clarity by 1.5 dB, pulled bass back 1.0 dB."
+- Deltas: {'volume_db': 0.0, 'bass_gain_db': -1.0, 'presence_gain_db': 1.0, 'treble_gain_db': 0.0}
+- Explanation: "Because of a moderate environment during movie, I boosted vocal clarity by 1.0 dB, pulled bass back 1.0 dB."
 - Curve plot: `home_movie.png`
