@@ -1,0 +1,11 @@
+{
+  "name": "Bose Music App (3-band)",
+  "band_freqs_hz": [100, 1000, 10000],
+  "gain_min_db": -10.0,
+  "gain_max_db": 10.0,
+  "step_db": 1.0,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Official Bose Music companion app 3-band equalizer (QuietComfort 45, QC Ultra, QC35 II, Noise Cancelling Headphones 700). 3 sliders labeled Bass (100 Hz), Mid (1 kHz), and Treble (10 kHz) from -10 to +10 dB in 1.0 dB increments."
+}
