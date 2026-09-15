@@ -55,6 +55,20 @@ def _llm_sentence(state: dict) -> str:
     return complete(system, user, max_tokens=100)
 
 
+def _genre_clause(state: dict) -> str:
+    """One extra clause naming the ML-detected genre, when the Genre agent
+    (agents/genre_agent.py) ran and actually changed anything."""
+    bucket = state.get("genre_bucket")
+    genre_deltas = state.get("genre_deltas") or {}
+    if not bucket or not any(abs(v) >= 0.05 for v in genre_deltas.values()):
+        return ""
+    label = bucket.replace("_", "/")
+    confidence = state.get("genre_confidence", 0.0)
+    model = state.get("genre_model_used", "")
+    return (f" Sounds like {label} ({confidence * 100:.0f}% confidence, "
+            f"local {model} model), so I leaned the curve that way.")
+
+
 def _projection_clause(state: dict) -> str:
     """One extra sentence naming the actual slider moves for the user's EQ app."""
     proj = state.get("projected_eq")
@@ -92,5 +106,5 @@ def run_explainer_agent(state: dict, eq: ParametricEQ) -> dict:
     sentence = _llm_sentence(state)
     if not sentence:
         sentence = _template_sentence(state)
-    state["explanation"] = sentence + _projection_clause(state)
+    state["explanation"] = sentence + _genre_clause(state) + _projection_clause(state)
     return state
