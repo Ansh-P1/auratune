@@ -35,7 +35,8 @@ auratune/
 │   └── synth_scenarios.py        # synthetic audio for demos/validation
 ├── agents/
 │   ├── profile_agent.py          # reads/writes MongoDB profile
-│   ├── eq_decision_agent.py      # context + command -> target curve
+│   ├── genre_agent.py            # music content -> local ML genre/mood prediction
+│   ├── eq_decision_agent.py      # context + genre + command -> target curve
 │   ├── projection_agent.py       # target curve -> your EQ app's exact slider values
 │   ├── explainer_agent.py        # deltas -> one plain-English sentence
 │   ├── llm_client.py             # thin Anthropic API wrapper w/ fallback
@@ -43,6 +44,14 @@ auratune/
 ├── data/
 │   └── db.py                     # MongoDB w/ local-JSON fallback
 ├── eq_specs/                      # one JSON per real EQ app (e.g. from a screenshot)
+├── ml/                            # local genre/mood classifier -- see ml/README.md
+│   ├── train.py                  # trains 3 models (LogReg, gradient boosting, a PyTorch
+│   │                              # neural net) on the 114k-track Spotify Tracks Dataset
+│   ├── model_def.py              # shared neural-net architecture + genre buckets
+│   ├── model_review.ipynb        # pre-run notebook reviewing all 3 models
+│   └── models/                   # trained artifacts (gitignored -- run train.py)
+├── perception/
+│   └── genre_classifier.py       # loads ml/models/, predicts genre from real audio
 ├── validation/
 │   └── generate_traces.py        # generates the 3 required validation traces
 └── tests/
@@ -136,6 +145,39 @@ Three ways to set your EQ, in the **Your EQ app** dropdown:
 Claude can also write a spec for you outside the app: send it a screenshot
 and it drops a `<name>.json` in `eq_specs/`. See `eq_specs/README.md`.
 
+## Local ML genre/mood classifier
+
+For music content, AuraTune can classify the genre/mood into one of 8
+EQ-relevant buckets (electronic/dance, rock/metal, hip-hop/R&B, pop,
+acoustic/folk, classical/jazz, chill/ambient, world/latin) using a model
+**trained locally on real data** -- no API calls, no network access needed
+at inference time. Three models are trained on the same split (Logistic
+Regression, a tuned `HistGradientBoostingClassifier`, and a PyTorch
+neural network, 200 epochs) on the
+[Spotify Tracks Dataset](https://huggingface.co/datasets/maharshipandya/spotify-tracks-dataset)
+(114,000 real tracks) -- **~53% test accuracy** on the best model (8-way
+classification; random baseline is 12.5%). The best-performing one is
+used by default, and the predicted bucket's hand-tuned EQ deltas
+(`dsp/genre_curves.py`) get blended into the curve, weighted by the
+model's own confidence. `ml/model_review.ipynb` is a pre-run notebook
+reviewing all 3 models -- comparison charts, confusion matrix, training
+curve, feature importance, a live classification demo.
+
+```bash
+mkdir -p ml/data
+curl -L "https://huggingface.co/datasets/maharshipandya/spotify-tracks-dataset/resolve/main/dataset.csv" \
+  -o ml/data/spotify_tracks_raw.csv
+python ml/train.py
+```
+
+Then just run the app as usual -- if `ml/models/` exists, the "Genre
+model (local ML)" picker appears in the sidebar and the Genre agent
+(`agents/genre_agent.py`) runs automatically for music scenarios. Skip
+this step and everything still works exactly as before -- it's a clean,
+optional add-on. Full write-up (dataset, genre-bucket mapping rationale,
+model comparison, and how live audio is turned into the model's input
+features): **[`ml/README.md`](ml/README.md)**.
+
 ## Run the validation traces
 
 Reproduces the 3 traces from the project's own validation plan:
@@ -190,6 +232,16 @@ against **graceful, documented fallbacks**, not stubbed out:
   produces a usable result.
 - **MongoDB**: real `pymongo` integration with a transparent local-JSON
   fallback for offline dev.
+- **Genre/mood classifier**: real models trained on a real, large,
+  third-party dataset (114k tracks) -- not stubbed or mocked. The one
+  approximation, clearly documented in `perception/genre_classifier.py`,
+  is that the model's input features come from Spotify's own private
+  audio-analysis pipeline, so at inference time this project computes
+  signal-derived *proxies* for them from the actual audio via `librosa`
+  (11 of 13 are genuinely estimated from the signal; 2 -- liveness and
+  time signature -- aren't reliably estimable from a short buffer and are
+  pinned to typical values rather than guessed). Same "real feature,
+  honestly-documented approximation" pattern as Demucs -> HPSS above.
 
 Everything else — the DSP, the classifier's noise detection, the LangGraph
 wiring, the EQ decision logic, the Streamlit UI — runs for real, no mocking.

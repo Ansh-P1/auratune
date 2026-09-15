@@ -19,6 +19,14 @@ anthropic   # optional: command parsing, explanations, EQ-screenshot reading
 # Data layer (optional -- falls back to local JSON if unset/unreachable)
 pymongo
 
+# Local ML: genre/mood classifier (ml/train.py, perception/genre_classifier.py)
+# Optional -- if ml/models/ hasn't been generated yet, the Genre agent is a
+# clean no-op and the rest of the pipeline is unaffected.
+scikit-learn
+joblib
+# torch: CPU build is enough (pip install torch); ml/train.py uses CUDA
+# automatically if a GPU + CUDA build of torch is available.
+
 # UI
 streamlit
 plotly
