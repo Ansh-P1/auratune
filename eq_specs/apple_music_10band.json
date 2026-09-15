@@ -1,0 +1,11 @@
+{
+  "name": "Apple Music (Classic 10-band EQ)",
+  "band_freqs_hz": [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  "gain_min_db": -12.0,
+  "gain_max_db": 12.0,
+  "step_db": 0,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Classic Apple Music 'Custom' 10-band graphic EQ (Settings > Music > EQ > Custom on iPhone/iPad, or the EQ pane in the Music app on Mac). Applies system-wide to whatever's connected -- including AirPods -- so it works as a real AirPods EQ even though AirPods themselves have no per-band slider EQ of their own. Long-documented, unchanged in structure for years; continuous gain, no fixed step."
+}

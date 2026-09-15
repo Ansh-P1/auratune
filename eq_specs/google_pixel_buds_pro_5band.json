@@ -1,0 +1,11 @@
+{
+  "name": "Google Pixel Buds (5-band)",
+  "band_freqs_hz": [60, 230, 910, 3600, 14000],
+  "gain_min_db": -6.0,
+  "gain_max_db": 6.0,
+  "step_db": 0.5,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Pixel Buds Pro / Pixel Buds Pro 2 / Pixel Buds 2a custom EQ in the Google Pixel Buds app (bands labeled lower bass/bass/mid/treble/upper treble in the UI). Confirmed publicly: 5 adjustable bands. NOT confirmed: exact center frequencies or gain range -- Google hasn't published these. Frequencies here follow the classic 5-band graphic-EQ convention (60/230/910/3.6k/14k Hz, the same spacing used in many consumer EQs) rather than a confirmed Google source; gain range/step are a typical consumer-TWS assumption. Correct via the manual editor if you have the device and it differs."
+}

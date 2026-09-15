@@ -66,16 +66,16 @@ def _build_css(dark: bool) -> str:
     else:
         vars_css = """
     --at-primary: #6C7BFF;
-    --at-primary-soft: #EEF0FF;
-    --at-accent: #F5A56B;
-    --at-accent-soft: #FFF3E9;
-    --at-ink: #2D3142;
-    --at-muted: #767B93;
-    --at-card: #FFFFFF;
-    --at-border: #EAECF5;
-    --at-bg: #FAFBFE;
+    --at-primary-soft: #EEEBFA;
+    --at-accent: #E8925A;
+    --at-accent-soft: #F3E4D3;
+    --at-ink: #3A3428;
+    --at-muted: #8C8370;
+    --at-card: #FFFCF6;
+    --at-border: #E8DFC9;
+    --at-bg: #F5EFE1;
 """
-        chip_color = "#B5652A"
+        chip_color = "#A6551F"
         shadow = "0 2px 10px rgba(45, 49, 66, 0.04)"
 
     template = """
@@ -150,7 +150,7 @@ div.stButton > button[kind="primary"]:hover {
 [data-testid="stTable"] table, [data-testid="stTable"] th, [data-testid="stTable"] td {
     background: var(--at-card) !important; color: var(--at-ink) !important; border-color: var(--at-border) !important;
 }
-[data-testid="stArrowVegaLiteChart"] { background: #ffffff !important; border-radius: 10px; padding: 8px; }
+[data-testid="stArrowVegaLiteChart"] { background: #FFFCF6 !important; border-radius: 10px; padding: 8px; }
 .at-chip {
     display: inline-block;
     background: var(--at-accent-soft);
@@ -438,10 +438,10 @@ with col_right:
             freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
 
             curve_color = "#8B93FF" if DARK else "#6C7BFF"
-            baseline_color = "#454A6E" if DARK else "#C7CBDE"
-            grid_color = "#2D3150" if DARK else "#EEF0F7"
-            plot_bg = "#1B1E30" if DARK else "white"
-            text_color = "#E7E9F5" if DARK else "#2D3142"
+            baseline_color = "#454A6E" if DARK else "#D6CBAE"
+            grid_color = "#2D3150" if DARK else "#EFE7D4"
+            plot_bg = "#1B1E30" if DARK else "#FFFCF6"
+            text_color = "#E7E9F5" if DARK else "#3A3428"
 
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
