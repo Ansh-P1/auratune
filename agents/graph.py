@@ -24,6 +24,7 @@ from agents.genre_agent import run_genre_agent
 from agents.eq_decision_agent import run_eq_decision_agent
 from agents.projection_agent import run_projection_agent
 from agents.explainer_agent import run_explainer_agent
+from agents.trace import traced
 
 
 class PipelineState(TypedDict, total=False):
@@ -53,6 +54,12 @@ class PipelineState(TypedDict, total=False):
     projected_eq: Optional[ProjectedEQ]
     eq: ParametricEQ
     explanation: str
+    # Observability (agents/trace.py) -- recorded per run so the dashboard
+    # can show one row per node and say whether Claude or a fallback ran.
+    agent_trace: list
+    llm_calls: list
+    command_parse_source: str    # "claude" | "rules" | "none"
+    explanation_source: str      # "claude" | "template"
 
 
 def build_graph(store: ProfileStore, eq: ParametricEQ,
@@ -64,12 +71,15 @@ def build_graph(store: ProfileStore, eq: ParametricEQ,
                 noise_model: str = "auto"):
     graph = StateGraph(PipelineState)
 
-    graph.add_node("profile_agent", lambda s: run_profile_agent(s, store))
-    graph.add_node("noise_agent", lambda s: run_noise_agent(s, ambient_audio, sample_rate, noise_model))
-    graph.add_node("genre_agent", lambda s: run_genre_agent(s, content_audio, sample_rate, genre_model))
-    graph.add_node("eq_decision_agent", run_eq_decision_agent)
-    graph.add_node("projection_agent", lambda s: run_projection_agent(s, eq, equalizer_spec))
-    graph.add_node("explainer_agent", lambda s: run_explainer_agent(s, eq))
+    # Every node goes through traced() (agents/trace.py), which times it and
+    # records what it put into the state -- pure recording, the node's own
+    # return value is passed straight through.
+    graph.add_node("profile_agent", traced("profile_agent", lambda s: run_profile_agent(s, store)))
+    graph.add_node("noise_agent", traced("noise_agent", lambda s: run_noise_agent(s, ambient_audio, sample_rate, noise_model)))
+    graph.add_node("genre_agent", traced("genre_agent", lambda s: run_genre_agent(s, content_audio, sample_rate, genre_model)))
+    graph.add_node("eq_decision_agent", traced("eq_decision_agent", run_eq_decision_agent))
+    graph.add_node("projection_agent", traced("projection_agent", lambda s: run_projection_agent(s, eq, equalizer_spec)))
+    graph.add_node("explainer_agent", traced("explainer_agent", lambda s: run_explainer_agent(s, eq)))
 
     graph.set_entry_point("profile_agent")
     graph.add_edge("profile_agent", "noise_agent")
@@ -112,6 +122,8 @@ def run_pipeline(
         "context": context,
         "user_command": user_command,
         "equalizer_spec": equalizer_spec,
+        "agent_trace": [],
+        "llm_calls": [],
     })
     # persist the decided curve + a history entry
     content_type = context.content_type
@@ -137,6 +149,8 @@ def run_pipeline(
         "noise_level": context.noise_level,
         "command": user_command,
         "explanation": result["explanation"],
+        "explanation_source": result.get("explanation_source"),
+        "command_parse_source": result.get("command_parse_source"),
         "context_deltas": result["context_deltas"],
         "command_deltas": result["command_deltas"],
         "genre_bucket": result.get("genre_bucket"),
