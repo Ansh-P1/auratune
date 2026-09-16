@@ -232,6 +232,15 @@ classification runs at full fidelity. If no microphone is available
 (`perception/live_capture.py`'s `is_available()` returns `False`), the
 option still appears but shows a friendly error instead of crashing.
 
+Real-time mode also has a **"Test with a YouTube video"** field — paste a
+link and `st.video()` embeds the player right there, so you can play
+something through your speakers for the mic to pick up without leaving
+the tab. It's convenience playback only, not a direct audio feed: a
+browser can't read a YouTube iframe's audio from the surrounding page
+(cross-origin security sandboxing applies to embedded video the same way
+it would to any other site), so AuraTune "hears" it exactly the way a
+real microphone would hear anything else playing in the room.
+
 ## Run the validation traces
 
 Reproduces the 3 traces from the project's own validation plan:

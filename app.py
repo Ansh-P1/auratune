@@ -446,6 +446,19 @@ with col_left:
                            "default microphone -- speak, play music, or just let the "
                            "room's ambient noise through.")
 
+            youtube_url = st.text_input(
+                "▶ Test with a YouTube video (optional)",
+                placeholder="https://www.youtube.com/watch?v=…",
+                help="Plays the video through your speakers so the 10-second mic "
+                     "capture above can pick it up -- a convenience for testing, "
+                     "not a direct audio feed. A browser can't read a YouTube "
+                     "iframe's audio from the page around it (cross-origin "
+                     "security), so real-time mode always \"hears\" it the same "
+                     "way your actual microphone would.",
+            )
+            if youtube_url.strip():
+                st.video(youtube_url.strip())
+
         user_command = st.text_input(
             "Live command (optional)",
             placeholder="e.g. make voices clearer, less bass",
