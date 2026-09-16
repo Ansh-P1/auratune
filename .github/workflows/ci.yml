@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +51,6 @@ jobs:
 
       - name: Test agent trace
         run: python tests/test_agent_trace.py
+
+      - name: Test Track 5 Matrix
+        run: python tests/test_track5_matrix.py
