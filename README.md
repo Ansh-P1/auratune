@@ -1,7 +1,6 @@
 # AuraTune — Adaptive Audio Personalization Engine
 
-**Live app:** _deploy on [Streamlit Community Cloud](https://share.streamlit.io)
-and put the `https://....streamlit.app` link here — see [Deploy it live](#deploy-it-live-free)._
+**Live app:** [auratune-eq.streamlit.app](https://auratune-eq.streamlit.app)
 
 Real-time, explainable EQ personalization. A perception layer reads the
 room (ambient noise) and the content (podcast / music / movie), a 3-agent
@@ -32,11 +31,15 @@ auratune/
 │   ├── context_classifier.py     # noise level + content type
 │   ├── eq_app_reader.py          # screenshot of an EQ app -> EqualizerSpec (vision)
 │   ├── stem_separation.py        # Demucs wrapper (falls back to HPSS)
-│   └── synth_scenarios.py        # synthetic audio for demos/validation
+│   ├── synth_scenarios.py        # synthetic audio for demos/validation
+│   ├── live_capture.py           # real mic capture (sounddevice) for real-time mode
+│   ├── genre_classifier.py       # loads ml/models/, predicts genre from real audio
+│   └── noise_classifier.py       # loads ml/models/, predicts ambient noise type
 ├── agents/
 │   ├── profile_agent.py          # reads/writes MongoDB profile
+│   ├── noise_agent.py            # ambient audio -> local ML noise-type prediction
 │   ├── genre_agent.py            # music content -> local ML genre/mood prediction
-│   ├── eq_decision_agent.py      # context + genre + command -> target curve
+│   ├── eq_decision_agent.py      # context + noise + genre + command -> target curve
 │   ├── projection_agent.py       # target curve -> your EQ app's exact slider values
 │   ├── explainer_agent.py        # deltas -> one plain-English sentence
 │   ├── llm_client.py             # thin Anthropic API wrapper w/ fallback
@@ -44,21 +47,22 @@ auratune/
 ├── data/
 │   └── db.py                     # MongoDB w/ local-JSON fallback
 ├── eq_specs/                      # one JSON per real EQ app (e.g. from a screenshot)
-├── ml/                            # local genre/mood classifier -- see ml/README.md
-│   ├── train.py                  # trains 3 models (LogReg, gradient boosting, a PyTorch
-│   │                              # neural net) on the 114k-track Spotify Tracks Dataset
+├── ml/                            # local ML models -- see ml/README.md
+│   ├── train.py                  # genre/mood: 3 models on the 114k-track Spotify dataset
 │   ├── model_def.py              # shared neural-net architecture + genre buckets
-│   ├── model_review.ipynb        # pre-run notebook reviewing all 3 models
-│   └── models/                   # trained artifacts (gitignored -- run train.py)
-├── perception/
-│   └── genre_classifier.py       # loads ml/models/, predicts genre from real audio
+│   ├── model_review.ipynb        # pre-run notebook reviewing all 3 genre models
+│   ├── train_noise.py            # noise-type: 3 models (incl. bagging + boosting) on ESC-50
+│   ├── noise_model_def.py        # noise buckets + feature columns
+│   └── models/                   # trained artifacts (gitignored -- run train*.py)
 ├── validation/
 │   └── generate_traces.py        # generates the 3 required validation traces
 └── tests/
     ├── test_dsp.py
     ├── test_eq_projection.py
     ├── test_eq_app_reader.py
-    └── test_classifier.py
+    ├── test_classifier.py
+    ├── test_genre_classifier.py
+    └── test_noise_classifier.py
 ```
 
 ## How to use the app
@@ -68,7 +72,9 @@ auratune/
 2. **Or run it yourself** (see [Setup](#setup) + [Run the dashboard](#run-the-dashboard)
    below), then:
    - Pick a **scenario** (quiet room + podcast / noisy environment + music /
-     home + movie) — this stands in for a live mic + media player.
+     home + movie), or **🎙️ Real-time (10s mic capture)** to record 10
+     seconds from your actual microphone and adapt to the real room instead
+     of a simulated one (see [Real-time mic mode](#real-time-mic-mode)).
    - Optionally type a **live command** in plain English ("make voices
      clearer", "less bass, this room is boomy").
    - Under **Your EQ app**, tell it which EQ you actually have — upload a
@@ -178,6 +184,54 @@ optional add-on. Full write-up (dataset, genre-bucket mapping rationale,
 model comparison, and how live audio is turned into the model's input
 features): **[`ml/README.md`](ml/README.md)**.
 
+## Local ML ambient-noise-type classifier
+
+A second, independent local ML component: instead of just *how loud* the
+room is (the always-on RMS-based quiet/moderate/noisy read), a model
+classifies *what kind* of ambient noise is present -- one of 6 buckets
+(calm nature, domestic ambient, human activity, mechanical drone, impulsive
+transient, traffic/urban) -- and refines the EQ curve on top of the
+loudness-based adjustment. Trained on **2,000 real labeled clips** from the
+[ESC-50 dataset](https://github.com/karolpiczak/ESC-50). Same 3-model
+setup as the genre classifier -- Logistic Regression baseline, a **bagging**
+Random Forest, and a **boosting** `HistGradientBoostingClassifier` -- and
+the best one is picked automatically:
+
+| Model | Type | Test accuracy | Test F1 (macro) |
+|---|---|---|---|
+| Logistic Regression | linear baseline | ~48% | ~0.42 |
+| Random Forest | bagging ensemble | ~63% | ~0.61 |
+| HistGradientBoostingClassifier | boosting ensemble | **~64%** | ~0.62 |
+
+(Random baseline for 6 balanced-ish classes is ~17%; see
+`ml/models/noise_metrics.json` after training for the exact run.) Unlike
+the genre classifier, there's no proxy-feature gap here -- training and
+inference call the exact same `extract_noise_features()` function.
+
+```bash
+mkdir -p ml/data
+curl -L "https://github.com/karolpiczak/ESC-50/archive/refs/heads/master.zip" \
+  -o ml/data/esc50_master.zip
+unzip ml/data/esc50_master.zip -d ml/data/
+python ml/train_noise.py
+```
+
+Full write-up: **[`ml/README.md`](ml/README.md)**.
+
+### Real-time mic mode
+
+Selecting **🎙️ Real-time (10s mic capture)** in the Scenario picker and
+clicking **Run adaptation** records 10 real seconds from your default
+microphone (`perception/live_capture.py`) and runs it through the noise
+classifier above -- genuinely live, not simulated. There's no separate
+"what's playing" feed in this mode (a single mic can't isolate content
+from room noise the way two synthetic buffers can), so you tell it what
+to expect (podcast/music/movie) from a dropdown; genre classification is
+skipped for that run since it needs a real content signal, but noise-type
+classification runs at full fidelity. If no microphone is available
+(`perception/live_capture.py`'s `is_available()` returns `False`), the
+option still appears but shows a friendly error instead of crashing.
+
 ## Run the validation traces
 
 Reproduces the 3 traces from the project's own validation plan:
@@ -202,7 +256,9 @@ Explainer agent's sentence for each.
 python3 tests/test_dsp.py
 python3 tests/test_eq_projection.py
 python3 tests/test_eq_app_reader.py
-python3 tests/test_classifier.py   # needs librosa installed
+python3 tests/test_classifier.py           # needs librosa installed
+python3 tests/test_genre_classifier.py     # needs librosa installed
+python3 tests/test_noise_classifier.py     # needs librosa installed
 ```
 
 ## Notes on what's real vs. simulated in this build
@@ -215,8 +271,12 @@ against **graceful, documented fallbacks**, not stubbed out:
 - **Ambient + content audio**: `perception/synth_scenarios.py` synthesizes
   representative audio (speech-like envelope for podcast, stable harmonic
   stack for music, dialogue+FX bursts for movie) standing in for real mic
-  capture / media playback. Swap in `sounddevice` or `streamlit-webrtc`
-  capture — nothing downstream changes.
+  capture / media playback, for the simulated scenarios. Real mic capture
+  is also implemented for real (`perception/live_capture.py`, via
+  `sounddevice`) and wired into the dashboard's **🎙️ Real-time (10s mic
+  capture)** mode — content audio (what's *playing*) still isn't captured,
+  since that needs OS-level loopback/virtual-cable setup that's
+  platform-specific; ambient room audio is captured for real.
 - **Content-type classification**: the noise-level detector is fully
   signal-derived and tested (`tests/test_classifier.py`). Content-type
   classification uses a real heuristic (syllable-rate envelope modulation,
@@ -242,6 +302,10 @@ against **graceful, documented fallbacks**, not stubbed out:
   time signature -- aren't reliably estimable from a short buffer and are
   pinned to typical values rather than guessed). Same "real feature,
   honestly-documented approximation" pattern as Demucs -> HPSS above.
+- **Noise-type classifier**: real models trained on a real, third-party
+  dataset (2,000 ESC-50 clips) -- no proxy-feature gap at all, since both
+  training and inference call the exact same `extract_noise_features()`
+  (see `ml/README.md`).
 
 Everything else — the DSP, the classifier's noise detection, the LangGraph
 wiring, the EQ decision logic, the Streamlit UI — runs for real, no mocking.
