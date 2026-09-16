@@ -281,6 +281,54 @@ def _num(x: float) -> str:
     return f"{x:.1f}".rstrip("0").rstrip(".")
 
 
+# ---------------------------------------------------------------------------
+# Generic device-type icons for "Your EQ app". Never a real product photo or
+# logo (copyright/trademark risk for a public repo + deployed site) -- just
+# hand-drawn line art keyed to the *kind* of device a preset represents, so
+# picking "OnePlus Buds" still shows something earbud-shaped without
+# claiming to depict the actual product.
+# ---------------------------------------------------------------------------
+_DEVICE_TYPES = {
+    "apple_music_10band": "earbuds",
+    "bose_music_app": "overear",
+    "google_pixel_buds_pro_5band": "earbuds",
+    "nothing_x_advanced_8band": "earbuds",
+    "oneplus_heymelody_5band": "earbuds",
+    "samsung_soundalive_9band": "earbuds",
+    "sennheiser_smart_control": "overear",
+    "sony_headphones_app": "overear",
+    "soundcore_app_8band": "overear",
+}
+
+_DEVICE_ICON_PATHS = {
+    "earbuds": (
+        '<circle cx="8" cy="9" r="3"/><path d="M8 12v6"/>'
+        '<circle cx="16" cy="9" r="3"/><path d="M16 12v6"/>'
+    ),
+    "overear": (
+        '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/>'
+        '<rect x="2.5" y="13" width="4" height="7" rx="1.5"/>'
+        '<rect x="17.5" y="13" width="4" height="7" rx="1.5"/>'
+    ),
+    "generic": (
+        '<line x1="5" y1="4" x2="5" y2="20"/><circle cx="5" cy="9" r="1.6" fill="currentColor"/>'
+        '<line x1="12" y1="4" x2="12" y2="20"/><circle cx="12" cy="15" r="1.6" fill="currentColor"/>'
+        '<line x1="19" y1="4" x2="19" y2="20"/><circle cx="19" cy="11" r="1.6" fill="currentColor"/>'
+    ),
+}
+
+
+def _device_icon_svg(spec_key: str) -> str:
+    device_type = _DEVICE_TYPES.get(spec_key, "generic")
+    color = "#8B93FF" if DARK else "#6C7BFF"
+    inner = _DEVICE_ICON_PATHS[device_type]
+    return (
+        f'<svg width="44" height="44" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{color}" stroke-width="1.6" stroke-linecap="round" '
+        f'stroke-linejoin="round">{inner}</svg>'
+    )
+
+
 def eq_spec_picker() -> EqualizerSpec | None:
     """Pick a built-in / saved spec, upload a screenshot, or build one by hand."""
     st.subheader("🎧 Your EQ app")
@@ -293,6 +341,15 @@ def eq_spec_picker() -> EqualizerSpec | None:
         index=1 if saved else 0,
         format_func=lambda k: specs[k].name if k in specs else k,
     )
+    icon_l, icon_r = st.columns([1, 6])
+    with icon_l:
+        st.markdown(_device_icon_svg(choice), unsafe_allow_html=True)
+    with icon_r:
+        device_type = _DEVICE_TYPES.get(choice, "generic")
+        label = {"earbuds": "Earbuds", "overear": "Over-ear headphones"}.get(
+            device_type, "Generic EQ app")
+        st.caption(f"_{label} (generic icon, not the actual product)_"
+                   if device_type != "generic" else f"_{label}_")
 
     if choice == "(none — just show the curve)":
         return None
