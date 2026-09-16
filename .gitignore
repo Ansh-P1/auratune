@@ -29,3 +29,6 @@ handoff_zips/
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated deliverable docs -- regenerate from the source artifact, not committed
+deliverables.pdf
