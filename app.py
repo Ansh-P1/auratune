@@ -31,6 +31,7 @@ from perception import genre_classifier
 from perception import noise_classifier
 from data.db import ProfileStore
 from agents.graph import run_pipeline
+from agents.spec_edit_parser import parse_spec_edit
 
 st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide")
 
@@ -246,6 +247,25 @@ def _spec_editor(prefill: EqualizerSpec | None, key: str) -> EqualizerSpec | Non
                     else "62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000")
     freq_str = st.text_input("Band frequencies (Hz, comma-separated)",
                              freq_default, key=f"{key}_freqs")
+
+    _NL_FIELD_TO_WIDGET = {"gain_min_db": "gmin", "gain_max_db": "gmax", "step_db": "step"}
+    nl_col, nl_btn_col = st.columns([5, 1])
+    nl_text = nl_col.text_input(
+        "Or just describe it in plain English",
+        placeholder='e.g. "my range is -76.5 to 7.5 dB" or "step is 0.5 dB"',
+        key=f"{key}_nl",
+    )
+    nl_btn_col.markdown("<div style='height:1.6rem'></div>", unsafe_allow_html=True)
+    if nl_btn_col.button("Apply", key=f"{key}_nl_apply"):
+        if nl_text.strip():
+            changes = parse_spec_edit(nl_text)
+            if changes:
+                for field, value in changes.items():
+                    st.session_state[f"{key}_{_NL_FIELD_TO_WIDGET[field]}"] = value
+                st.success("Updated " + ", ".join(changes) + " below.")
+            else:
+                st.caption('Couldn\'t find a number in that -- try e.g. "range -76.5 to 7.5 dB".')
+
     c1, c2, c3 = st.columns(3)
     gmin = c1.number_input("Min dB", value=float(p.gain_min_db) if p else -12.0,
                            step=1.0, key=f"{key}_gmin")
@@ -364,6 +384,15 @@ def eq_spec_picker() -> EqualizerSpec | None:
         )
         if spec.notes:
             st.caption(f"_{spec.notes}_")
+        with st.expander("✏️ Edit values (e.g. match your app's actual dB range)"):
+            st.caption("Presets are a starting point — your actual app may differ "
+                       "(e.g. Wavelet's preamp can go down to −76.5 dB, not the "
+                       "±12 dB shown above). Adjust the range, step, or bands to "
+                       "match what your app really shows, then optionally save it "
+                       "as its own preset below.")
+            edited = _spec_editor(spec, key=f"edit_{_slugify(choice)}")
+            if edited is not None:
+                spec = edited
         return spec
 
     if choice == "Manual…":
