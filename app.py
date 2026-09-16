@@ -26,7 +26,9 @@ from dsp.equalizer_spec import EqualizerSpec, all_specs, save_spec
 from perception.eq_app_reader import read_equalizer_screenshot
 from perception.context_classifier import classify, Context
 from perception.synth_scenarios import synth_scenario, SCENARIOS as SCENARIO_LABELS, SCENARIO_CONTENT_TYPE
+from perception.live_capture import record_ambient, is_available as mic_is_available, MicUnavailableError
 from perception import genre_classifier
+from perception import noise_classifier
 from data.db import ProfileStore
 from agents.graph import run_pipeline
 
@@ -359,14 +361,34 @@ st.caption("Perception → 3-agent LangGraph → your EQ, explained in plain Eng
 
 col_left, col_right = st.columns([1, 1.4], gap="medium")
 
+REALTIME_KEY = "__realtime__"
+
 with col_left:
     with st.container(border=True):
         st.subheader("🎬 Scenario")
+        scenario_options = list(SCENARIO_LABELS.keys()) + [REALTIME_KEY]
+        scenario_labels = {**SCENARIO_LABELS, REALTIME_KEY: "🎙️ Real-time (10s mic capture)"}
         scenario_key = st.selectbox(
             "Simulated context",
-            list(SCENARIO_LABELS.keys()),
-            format_func=lambda k: SCENARIO_LABELS[k],
+            scenario_options,
+            format_func=lambda k: scenario_labels[k],
         )
+
+        realtime_content_hint = "music"
+        if scenario_key == REALTIME_KEY:
+            realtime_content_hint = st.selectbox(
+                "What's playing? (real-time mode has no separate content feed,"
+                " so tell it what to expect)",
+                ["podcast", "music", "movie"], index=1,
+            )
+            if not mic_is_available():
+                st.caption("⚠️ No microphone detected on this machine/browser session — "
+                           "Run adaptation will show a friendly error instead of capturing audio.")
+            else:
+                st.caption("Clicking Run adaptation will record 10 seconds from your "
+                           "default microphone -- speak, play music, or just let the "
+                           "room's ambient noise through.")
+
         user_command = st.text_input(
             "Live command (optional)",
             placeholder="e.g. make voices clearer, less bass",
@@ -387,6 +409,22 @@ with col_left:
             st.caption("No trained genre model found — run `python ml/train.py` "
                        "once to enable local ML genre-aware EQ tuning.")
 
+        if noise_classifier.available():
+            noise_model_options = ["auto (best)"] + noise_classifier.list_models()
+            noise_model_choice = st.selectbox(
+                "Noise model (local ML)", noise_model_options,
+                format_func=lambda k: k if k.startswith("auto") else _model_label(k),
+                help="Classifies the ambient/room noise into one of 6 buckets "
+                     "(calm nature, domestic, human activity, mechanical drone, "
+                     "impulsive/transient, traffic/urban) and leans the EQ curve "
+                     "accordingly. Trained on the real ESC-50 dataset -- see ml/README.md.",
+            )
+            noise_model_name = "auto" if noise_model_choice.startswith("auto") else noise_model_choice
+        else:
+            noise_model_name = "auto"
+            st.caption("No trained noise model found — run `python ml/train_noise.py` "
+                       "once to enable local ML noise-type-aware EQ tuning.")
+
     with st.container(border=True):
         eq_spec = eq_spec_picker()
 
@@ -403,105 +441,139 @@ with col_left:
 
 with col_right:
     if run_clicked:
-        ambient, content = synth_scenario(scenario_key, SR)
-        ctx: Context = classify(ambient, content, SR,
-                                 content_type_hint=SCENARIO_CONTENT_TYPE[scenario_key])
-        eq = get_eq()
+        mic_error = None
+        content = None
+        if scenario_key == REALTIME_KEY:
+            try:
+                with st.spinner("🎙️ Listening for 10 seconds…"):
+                    ambient = record_ambient(10.0, SR)
+                content_type_hint = realtime_content_hint
+            except MicUnavailableError as exc:
+                mic_error = str(exc)
+                ambient = None
+        else:
+            ambient, content = synth_scenario(scenario_key, SR)
+            content_type_hint = SCENARIO_CONTENT_TYPE[scenario_key]
 
-        with st.spinner("Running perception → agents → DSP…"):
-            result = run_pipeline(store, eq, USER_ID, ctx, user_command,
-                                  equalizer_spec=eq_spec, content_audio=content,
-                                  sample_rate=SR, genre_model=genre_model_name)
+        if mic_error:
+            st.error(f"Couldn't capture from the microphone: {mic_error}")
+        else:
+            ctx: Context = classify(ambient, content if content is not None else ambient,
+                                    SR, content_type_hint=content_type_hint)
+            eq = get_eq()
 
-        with st.container(border=True):
-            st.subheader("📡 Detected context")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Noise level", ctx.noise_level)
-            c2.metric("Content type", ctx.content_type)
-            c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
+            with st.spinner("Running perception → agents → DSP…"):
+                result = run_pipeline(store, eq, USER_ID, ctx, user_command,
+                                      equalizer_spec=eq_spec, content_audio=content,
+                                      ambient_audio=ambient, sample_rate=SR,
+                                      genre_model=genre_model_name, noise_model=noise_model_name)
 
-        proj = result.get("projected_eq")
-
-        if result.get("genre_bucket"):
             with st.container(border=True):
-                st.subheader("🎼 Detected genre (local ML model)")
-                g1, g2, g3 = st.columns(3)
-                g1.metric("Genre bucket", _genre_label(result["genre_bucket"]))
-                g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
-                g3.metric("Model used", _model_label(result.get("genre_model_used", "-")))
-                probs = result.get("genre_probabilities") or {}
-                if probs:
-                    labeled = {_GENRE_CHART_NAMES.get(k, k): v for k, v in
-                              sorted(probs.items(), key=lambda kv: -kv[1])}
-                    st.bar_chart(labeled, color="#6C7BFF")
-        elif result.get("genre_unavailable_reason"):
-            st.caption(f"Genre model unavailable: {result['genre_unavailable_reason']}")
+                st.subheader("📡 Detected context")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Noise level", ctx.noise_level)
+                c2.metric("Content type", ctx.content_type)
+                c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
 
-        with st.container(border=True):
-            st.subheader("📈 Live EQ curve")
-            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
-            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
+            proj = result.get("projected_eq")
 
-            curve_color = "#8B93FF" if DARK else "#6C7BFF"
-            baseline_color = "#454A6E" if DARK else "#D6CBAE"
-            grid_color = "#2D3150" if DARK else "#EFE7D4"
-            plot_bg = "#1B1E30" if DARK else "#FFFCF6"
-            text_color = "#E7E9F5" if DARK else "#3A3428"
+            if result.get("noise_bucket"):
+                with st.container(border=True):
+                    st.subheader("🎙️ Detected noise type (local ML model)")
+                    n1, n2, n3 = st.columns(3)
+                    n1.metric("Noise bucket", result["noise_bucket"].replace("_", " ").title())
+                    n2.metric("Confidence", f"{result.get('noise_confidence', 0) * 100:.0f}%")
+                    n3.metric("Model used", _model_label(result.get("noise_model_used", "-")))
+                    nprobs = result.get("noise_probabilities") or {}
+                    if nprobs:
+                        nlabeled = {k.replace("_", " ").title(): v for k, v in
+                                   sorted(nprobs.items(), key=lambda kv: -kv[1])}
+                        st.bar_chart(nlabeled, color="#E8925A")
+            elif result.get("noise_unavailable_reason"):
+                st.caption(f"Noise model unavailable: {result['noise_unavailable_reason']}")
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
-                                      line=dict(dash="dash", color=baseline_color)))
-            fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
-                                      line=dict(color=curve_color, width=3)))
-            if proj is not None:
-                fig.add_trace(go.Scatter(
-                    x=[b.freq_hz for b in proj.bands],
-                    y=[b.set_gain_db for b in proj.bands],
-                    name=f"{proj.spec_name} sliders",
-                    mode="markers+lines",
-                    line=dict(color="#F5A56B", width=1, dash="dot"),
-                    marker=dict(size=10, color="#F5A56B"),
-                ))
-            fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor=grid_color)
-            fig.update_yaxes(title="Gain (dB)", gridcolor=grid_color)
-            fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
-                               legend=dict(orientation="h", y=1.1),
-                               plot_bgcolor=plot_bg, paper_bgcolor="rgba(0,0,0,0)",
-                               font=dict(family="Inter, sans-serif", color=text_color))
-            st.plotly_chart(fig, use_container_width=True)
+            if result.get("genre_bucket"):
+                with st.container(border=True):
+                    st.subheader("🎼 Detected genre (local ML model)")
+                    g1, g2, g3 = st.columns(3)
+                    g1.metric("Genre bucket", _genre_label(result["genre_bucket"]))
+                    g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
+                    g3.metric("Model used", _model_label(result.get("genre_model_used", "-")))
+                    probs = result.get("genre_probabilities") or {}
+                    if probs:
+                        labeled = {_GENRE_CHART_NAMES.get(k, k): v for k, v in
+                                  sorted(probs.items(), key=lambda kv: -kv[1])}
+                        st.bar_chart(labeled, color="#6C7BFF")
+            elif result.get("genre_unavailable_reason"):
+                st.caption(f"Genre model unavailable: {result['genre_unavailable_reason']}")
 
-        if proj is not None:
             with st.container(border=True):
-                st.subheader(f"🎯 Set these on {proj.spec_name}")
-                st.table(proj.as_table_rows())
-                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
-                if proj.clipped_freqs:
-                    note += (" Some bands hit the app's range limit — that's the closest "
-                             "it can get.")
-                if not proj.has_preamp:
-                    note += ("  *This app has no preamp; the value is how much to lower the "
-                             "media/app volume so the boosts don't clip.")
-                st.caption(note)
+                st.subheader("📈 Live EQ curve")
+                freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
+                freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
 
-                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
-                st.download_button("⬇  Download these settings (.txt)", txt,
-                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
+                curve_color = "#8B93FF" if DARK else "#6C7BFF"
+                baseline_color = "#454A6E" if DARK else "#D6CBAE"
+                grid_color = "#2D3150" if DARK else "#EFE7D4"
+                plot_bg = "#1B1E30" if DARK else "#FFFCF6"
+                text_color = "#E7E9F5" if DARK else "#3A3428"
 
-        with st.container(border=True):
-            st.subheader("💬 Explanation")
-            st.info(result["explanation"])
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
+                                          line=dict(dash="dash", color=baseline_color)))
+                fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
+                                          line=dict(color=curve_color, width=3)))
+                if proj is not None:
+                    fig.add_trace(go.Scatter(
+                        x=[b.freq_hz for b in proj.bands],
+                        y=[b.set_gain_db for b in proj.bands],
+                        name=f"{proj.spec_name} sliders",
+                        mode="markers+lines",
+                        line=dict(color="#F5A56B", width=1, dash="dot"),
+                        marker=dict(size=10, color="#F5A56B"),
+                    ))
+                fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor=grid_color)
+                fig.update_yaxes(title="Gain (dB)", gridcolor=grid_color)
+                fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
+                                   legend=dict(orientation="h", y=1.1),
+                                   plot_bgcolor=plot_bg, paper_bgcolor="rgba(0,0,0,0)",
+                                   font=dict(family="Inter, sans-serif", color=text_color))
+                st.plotly_chart(fig, use_container_width=True)
 
-        with st.expander("Raw deltas (debug)"):
-            dbg = {
-                "context_deltas": result["context_deltas"],
-                "command_deltas": result["command_deltas"],
-                "genre_deltas": result.get("genre_deltas"),
-                "genre_proxy_features": result.get("genre_proxy_features"),
-                "decided_curve": result["decided_curve"].to_dict(),
-            }
             if proj is not None:
-                dbg["projected_eq"] = proj.to_dict()
-            st.json(dbg)
+                with st.container(border=True):
+                    st.subheader(f"🎯 Set these on {proj.spec_name}")
+                    st.table(proj.as_table_rows())
+                    note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
+                    if proj.clipped_freqs:
+                        note += (" Some bands hit the app's range limit — that's the closest "
+                                 "it can get.")
+                    if not proj.has_preamp:
+                        note += ("  *This app has no preamp; the value is how much to lower the "
+                                 "media/app volume so the boosts don't clip.")
+                    st.caption(note)
+
+                    txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
+                    st.download_button("⬇  Download these settings (.txt)", txt,
+                                       file_name=f"{_slugify(proj.spec_name)}_settings.txt")
+
+            with st.container(border=True):
+                st.subheader("💬 Explanation")
+                st.info(result["explanation"])
+
+            with st.expander("Raw deltas (debug)"):
+                dbg = {
+                    "context_deltas": result["context_deltas"],
+                    "command_deltas": result["command_deltas"],
+                    "genre_deltas": result.get("genre_deltas"),
+                    "genre_proxy_features": result.get("genre_proxy_features"),
+                    "noise_deltas": result.get("noise_deltas"),
+                    "noise_features": result.get("noise_features"),
+                    "decided_curve": result["decided_curve"].to_dict(),
+                }
+                if proj is not None:
+                    dbg["projected_eq"] = proj.to_dict()
+                st.json(dbg)
     else:
         with st.container(border=True):
             st.markdown("#### 👋 Ready when you are")
