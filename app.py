@@ -48,15 +48,15 @@ DARK = st.session_state.dark_mode
 # toggle widget near the title). .streamlit/config.toml sets the base
 # Streamlit theme (fixed at server start, can't change at runtime); this
 # CSS layer is what actually switches on the fly, driven by
-# st.session_state.dark_mode. __VARS__/__CHIP_COLOR__/__SHADOW__ are
+# st.session_state.dark_mode. __VARS__/__SHADOW__/__PRIMARY_TEXT__/__CHIP_COLOR__ are
 # plain string placeholders (not an f-string) so the CSS itself never
 # needs its braces escaped.
 # ---------------------------------------------------------------------------
 def _build_css(dark: bool) -> str:
     if dark:
         vars_css = """
-    --at-primary: #8B93FF;
-    --at-primary-soft: #262A46;
+    --at-primary: #D5B893;
+    --at-primary-soft: #3D3320;
     --at-accent: #FFB37E;
     --at-accent-soft: #3A2A1E;
     --at-ink: #E7E9F5;
@@ -65,12 +65,13 @@ def _build_css(dark: bool) -> str:
     --at-border: #2D3150;
     --at-bg: #12141F;
 """
-        chip_color = "#FFB37E"
         shadow = "0 2px 14px rgba(0, 0, 0, 0.35)"
+        primary_text = "#25344F"
+        chip_color = "#FFB37E"
     else:
         vars_css = """
-    --at-primary: #6C7BFF;
-    --at-primary-soft: #EEEBFA;
+    --at-primary: #743014;
+    --at-primary-soft: #F2DFDA;
     --at-accent: #E8925A;
     --at-accent-soft: #F3E4D3;
     --at-ink: #3A3428;
@@ -79,8 +80,9 @@ def _build_css(dark: bool) -> str:
     --at-border: #E8DFC9;
     --at-bg: #F5EFE1;
 """
-        chip_color = "#A6551F"
         shadow = "0 2px 10px rgba(45, 49, 66, 0.04)"
+        primary_text = "#ffffff"
+        chip_color = "#A6551F"
 
     template = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -134,24 +136,47 @@ div.stButton > button, div.stDownloadButton > button {
     color: var(--at-ink) !important;
 }
 div.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #6C7BFF 0%, #8A7BFF 100%) !important;
-    box-shadow: 0 4px 14px rgba(108, 123, 255, 0.35);
-    color: #ffffff !important;
+    background: var(--at-primary) !important;
+    box-shadow: none !important;
+    color: __PRIMARY_TEXT__ !important;
 }
+/* The button's label sits in a nested <p>, which the global
+   "p, span, label... { color: var(--at-ink) }" rule further down also
+   matches -- being the more specific (innermost) element, it was winning
+   over the button's own color and making the text hard to read. */
+div.stButton > button[kind="primary"] p { color: __PRIMARY_TEXT__ !important; }
 div.stButton > button[kind="primary"]:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(108, 123, 255, 0.45);
+    box-shadow: none !important;
 }
 [data-testid="stToggle"] label p { color: var(--at-ink) !important; }
-[data-baseweb="select"], [data-baseweb="select"] * { background: var(--at-card) !important; color: var(--at-ink) !important; }
+/* Streamlit's selectbox moved to a react-aria ComboBox with no [data-baseweb]
+   attributes at all -- the old BaseWeb selectors above matched nothing.
+   Targeting by role instead, since that's the stable part across versions. */
+[data-testid="stSelectbox"] input[role="combobox"] { color: var(--at-ink) !important; }
+[data-testid="stSelectbox"] [role="group"] {
+    background: var(--at-card) !important;
+    border-color: var(--at-border) !important;
+}
 .stTextInput input, .stNumberInput input, .stFileUploader section {
     border-radius: 12px !important;
     border-color: var(--at-border) !important;
     background: var(--at-card) !important;
     color: var(--at-ink) !important;
 }
-[data-baseweb="popover"] li, [data-baseweb="menu"] { background: var(--at-card) !important; color: var(--at-ink) !important; }
-[data-baseweb="popover"] li:hover { background: var(--at-primary-soft) !important; }
+/* Browsers dim placeholder text by default (often ~50% opacity), which on
+   top of an already-muted colour made it too faint to read against the
+   dark card background. Forcing full opacity here. */
+.stTextInput input::placeholder, .stNumberInput input::placeholder {
+    color: var(--at-muted) !important;
+    opacity: 1 !important;
+}
+/* The open dropdown list renders in a portal appended to <body>, not inside
+   the app tree -- selecting it structurally by its listbox child since its
+   own wrapper has no stable class or role. */
+body div:has(> [role="listbox"]) { background: var(--at-card) !important; border: 1px solid var(--at-border) !important; }
+[role="option"] { background: transparent !important; color: var(--at-ink) !important; }
+[role="option"]:hover, [role="option"][data-hovered="true"] { background: var(--at-primary-soft) !important; }
 [data-testid="stAlert"] { border-radius: 14px !important; background: var(--at-primary-soft) !important; color: var(--at-ink) !important; }
 [data-testid="stExpander"] { border-radius: 14px !important; border-color: var(--at-border) !important; overflow: hidden; background: var(--at-card) !important; }
 [data-testid="stExpander"] summary { color: var(--at-ink) !important; }
@@ -192,6 +217,7 @@ div.stButton > button[kind="primary"]:hover {
 """
     return (template.replace("__VARS__", "{" + vars_css + "}")
                     .replace("__SHADOW__", shadow)
+                    .replace("__PRIMARY_TEXT__", primary_text)
                     .replace("__CHIP_COLOR__", chip_color))
 
 
@@ -308,7 +334,7 @@ def _spec_editor(prefill: EqualizerSpec | None, key: str) -> EqualizerSpec | Non
     )
     if st.button("Save to eq_specs/ (reuse it later)", key=f"{key}_save"):
         path = save_spec(_slugify(name), spec)
-        st.success(f"Saved {path.name} — it'll be in the dropdown next time.")
+        st.success(f"Saved {path.name}. It'll be in the dropdown next time.")
     return spec
 
 
@@ -355,7 +381,7 @@ _DEVICE_ICON_PATHS = {
 
 def _device_icon_svg(spec_key: str) -> str:
     device_type = _DEVICE_TYPES.get(spec_key, "generic")
-    color = "#8B93FF" if DARK else "#6C7BFF"
+    color = "#E8D1A7" if DARK else "#743014"
     inner = _DEVICE_ICON_PATHS[device_type]
     return (
         f'<svg width="44" height="44" viewBox="0 0 24 24" fill="none" '
@@ -366,14 +392,14 @@ def _device_icon_svg(spec_key: str) -> str:
 
 def eq_spec_picker() -> EqualizerSpec | None:
     """Pick a built-in / saved spec, upload a screenshot, or build one by hand."""
-    st.subheader("🎧 Your EQ app")
+    st.subheader("Your EQ app")
     specs = all_specs()
     saved = list(specs.keys())
-    options = ["📷 Upload a screenshot…"] + saved + ["Manual…", "(none — just show the curve)"]
+    options = ["Upload a screenshot…"] + saved + ["Manual…", "(none, just show the curve)"]
     choice = st.selectbox(
         "Which EQ are you dialing in?",
         options,
-        index=1 if saved else 0,
+        index=len(options) - 1,  # neutral by default -- don't assume a device the user may not own
         format_func=lambda k: specs[k].name if k in specs else k,
     )
     icon_l, icon_r = st.columns([1, 6])
@@ -386,7 +412,7 @@ def eq_spec_picker() -> EqualizerSpec | None:
         st.caption(f"_{label} (generic icon, not the actual product)_"
                    if device_type != "generic" else f"_{label}_")
 
-    if choice == "(none — just show the curve)":
+    if choice == "(none, just show the curve)":
         return None
 
     if choice in specs:
@@ -444,7 +470,7 @@ def eq_spec_picker() -> EqualizerSpec | None:
         return _spec_editor(None, key="upload_fallback")
 
     detected = EqualizerSpec.from_dict(spec_dict)
-    st.success(f"Read **{detected.name}** — {len(detected.band_freqs_hz)} bands, "
+    st.success(f"Read **{detected.name}**: {len(detected.band_freqs_hz)} bands, "
                f"{detected.step_db or 'continuous'} dB step (via {backend}). "
                f"Check it below, then use it.")
     if model_notes:
@@ -452,23 +478,22 @@ def eq_spec_picker() -> EqualizerSpec | None:
     return _spec_editor(detected, key="upload")
 
 
-top_l, top_r = st.columns([6, 1])
-with top_l:
-    st.markdown('<span class="at-chip">🎧 Adaptive Audio Personalization</span>', unsafe_allow_html=True)
+_, top_r = st.columns([6, 1])
 with top_r:
-    st.toggle("🌙 Dark", key="dark_mode")
+    st.toggle("Dark", key="dark_mode")
 st.title("AuraTune")
 st.caption("Perception → 3-agent LangGraph → your EQ, explained in plain English")
 
-col_left, col_right = st.columns([1, 1.4], gap="medium")
-
 REALTIME_KEY = "__realtime__"
+store = get_store()
 
-with col_left:
+row1_left, row1_right = st.columns([1, 1], gap="medium")
+
+with row1_left:
     with st.container(border=True):
-        st.subheader("🎬 Scenario")
+        st.subheader("Scenario")
         scenario_options = list(SCENARIO_LABELS.keys()) + [REALTIME_KEY]
-        scenario_labels = {**SCENARIO_LABELS, REALTIME_KEY: "🎙️ Real-time (10s mic capture)"}
+        scenario_labels = {**SCENARIO_LABELS, REALTIME_KEY: "Real-time (10s mic capture)"}
         scenario_key = st.selectbox(
             "Simulated context",
             scenario_options,
@@ -519,8 +544,8 @@ with col_left:
             genre_model_name = "auto" if genre_model_choice.startswith("auto") else genre_model_choice
         else:
             genre_model_name = "auto"
-            st.caption("No trained genre model found — run `python ml/train.py` "
-                       "once to enable local ML genre-aware EQ tuning.")
+            st.caption("Genre-aware tuning isn't available in this deployment. "
+                       "Your EQ still adapts based on room noise and content type.")
 
         if noise_classifier.available():
             noise_model_options = ["auto (best)"] + noise_classifier.list_models()
@@ -535,224 +560,256 @@ with col_left:
             noise_model_name = "auto" if noise_model_choice.startswith("auto") else noise_model_choice
         else:
             noise_model_name = "auto"
-            st.caption("No trained noise model found — run `python ml/train_noise.py` "
-                       "once to enable local ML noise-type-aware EQ tuning.")
+            st.caption("Noise-type tuning isn't available in this deployment. "
+                       "Your EQ still adapts based on overall noise level and content type.")
 
+with row1_right:
     with st.container(border=True):
         eq_spec = eq_spec_picker()
 
-    run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
+run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
 
-    with st.container(border=True):
-        st.subheader("🕘 History")
-        store = get_store()
-        history = store.get_history(USER_ID, limit=8)
-        if not history:
-            st.caption("No adjustments logged yet.")
-        for h in reversed(history):
-            st.markdown(f"- **{h['content_type']}** / {h['noise_level']} — {h['explanation']}")
-
-with col_right:
-    if run_clicked:
-        mic_error = None
-        content = None
-        if scenario_key == REALTIME_KEY:
-            if realtime_audio is None:
-                mic_error = ("No audio recorded yet -- click the microphone icon "
-                             "above, record a clip, then click Run adaptation again.")
+if run_clicked:
+    mic_error = None
+    content = None
+    if scenario_key == REALTIME_KEY:
+        if realtime_audio is None:
+            mic_error = ("No audio recorded yet -- click the microphone icon "
+                         "above, record a clip, then click Run adaptation again.")
+            ambient = None
+        else:
+            try:
+                with st.spinner("Decoding your recording…"):
+                    ambient = decode_browser_audio(realtime_audio.getvalue(), SR)
+                content_type_hint = realtime_content_hint
+            except MicUnavailableError as exc:
+                mic_error = str(exc)
                 ambient = None
-            else:
-                try:
-                    with st.spinner("Decoding your recording…"):
-                        ambient = decode_browser_audio(realtime_audio.getvalue(), SR)
-                    content_type_hint = realtime_content_hint
-                except MicUnavailableError as exc:
-                    mic_error = str(exc)
-                    ambient = None
-        else:
-            ambient, content = synth_scenario(scenario_key, SR)
-            content_type_hint = SCENARIO_CONTENT_TYPE[scenario_key]
-
-        if mic_error:
-            st.error(f"Couldn't capture from the microphone: {mic_error}")
-        else:
-            ctx: Context = classify(ambient, content if content is not None else ambient,
-                                    SR, content_type_hint=content_type_hint)
-            eq = get_eq()
-
-            with st.spinner("Running perception → agents → DSP…"):
-                result = run_pipeline(store, eq, USER_ID, ctx, user_command,
-                                      equalizer_spec=eq_spec, content_audio=content,
-                                      ambient_audio=ambient, sample_rate=SR,
-                                      genre_model=genre_model_name, noise_model=noise_model_name)
-
-            with st.container(border=True):
-                st.subheader("📡 Detected context")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Noise level", ctx.noise_level)
-                c2.metric("Content type", ctx.content_type)
-                c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
-
-            proj = result.get("projected_eq")
-
-            if result.get("noise_bucket"):
-                with st.container(border=True):
-                    st.subheader("🎙️ Detected noise type (local ML model)")
-                    n1, n2, n3 = st.columns(3)
-                    n1.metric("Noise bucket", result["noise_bucket"].replace("_", " ").title())
-                    n2.metric("Confidence", f"{result.get('noise_confidence', 0) * 100:.0f}%")
-                    n3.metric("Model used", _model_label(result.get("noise_model_used", "-")))
-                    nprobs = result.get("noise_probabilities") or {}
-                    if nprobs:
-                        nlabeled = {k.replace("_", " ").title(): v for k, v in
-                                   sorted(nprobs.items(), key=lambda kv: -kv[1])}
-                        st.bar_chart(nlabeled, color="#E8925A")
-            elif result.get("noise_unavailable_reason"):
-                st.caption(f"Noise model unavailable: {result['noise_unavailable_reason']}")
-
-            if result.get("genre_bucket"):
-                with st.container(border=True):
-                    st.subheader("🎼 Detected genre (local ML model)")
-                    g1, g2, g3 = st.columns(3)
-                    g1.metric("Genre bucket", _genre_label(result["genre_bucket"]))
-                    g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
-                    g3.metric("Model used", _model_label(result.get("genre_model_used", "-")))
-                    probs = result.get("genre_probabilities") or {}
-                    if probs:
-                        labeled = {_GENRE_CHART_NAMES.get(k, k): v for k, v in
-                                  sorted(probs.items(), key=lambda kv: -kv[1])}
-                        st.bar_chart(labeled, color="#6C7BFF")
-            elif result.get("genre_unavailable_reason"):
-                st.caption(f"Genre model unavailable: {result['genre_unavailable_reason']}")
-
-            with st.container(border=True):
-                st.subheader("📈 Live EQ curve")
-                freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
-                freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
-
-                curve_color = "#8B93FF" if DARK else "#6C7BFF"
-                baseline_color = "#454A6E" if DARK else "#D6CBAE"
-                grid_color = "#2D3150" if DARK else "#EFE7D4"
-                plot_bg = "#1B1E30" if DARK else "#FFFCF6"
-                text_color = "#E7E9F5" if DARK else "#3A3428"
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
-                                          line=dict(dash="dash", color=baseline_color)))
-                fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
-                                          line=dict(color=curve_color, width=3)))
-                if proj is not None:
-                    fig.add_trace(go.Scatter(
-                        x=[b.freq_hz for b in proj.bands],
-                        y=[b.set_gain_db for b in proj.bands],
-                        name=f"{proj.spec_name} sliders",
-                        mode="markers+lines",
-                        line=dict(color="#F5A56B", width=1, dash="dot"),
-                        marker=dict(size=10, color="#F5A56B"),
-                    ))
-                fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor=grid_color)
-                fig.update_yaxes(title="Gain (dB)", gridcolor=grid_color)
-                fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
-                                   legend=dict(orientation="h", y=1.1),
-                                   plot_bgcolor=plot_bg, paper_bgcolor="rgba(0,0,0,0)",
-                                   font=dict(family="Inter, sans-serif", color=text_color))
-                st.plotly_chart(fig, use_container_width=True)
-
-            if proj is not None:
-                with st.container(border=True):
-                    st.subheader(f"🎯 Set these on {proj.spec_name}")
-                    st.table(proj.as_table_rows())
-                    note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
-                    if proj.clipped_freqs:
-                        note += (" Some bands hit the app's range limit — that's the closest "
-                                 "it can get.")
-                    if not proj.has_preamp:
-                        note += ("  *This app has no preamp; the value is how much to lower the "
-                                 "media/app volume so the boosts don't clip.")
-                    st.caption(note)
-
-                    txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
-                    st.download_button("⬇  Download these settings (.txt)", txt,
-                                       file_name=f"{_slugify(proj.spec_name)}_settings.txt")
-
-            with st.container(border=True):
-                exp_source = result.get("explanation_source", "template")
-                if exp_source == "llm":
-                    model = result.get("explanation_model", "an LLM")
-                    provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
-                    badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
-                else:
-                    badge = "📋 Written by the built-in template"
-                head, tag = st.columns([3, 2])
-                head.subheader("💬 Explanation")
-                tag.markdown(f"<div class='llm-badge'>{badge}</div>",
-                             unsafe_allow_html=True)
-                st.info(result["explanation"])
-                cmd_source = result.get("command_parse_source", "none")
-                if cmd_source != "none":
-                    st.caption("Your typed command was parsed by "
-                               + ("**the LLM**." if cmd_source == "llm"
-                                  else "**keyword rules** (no API key, or the call failed)."))
-
-            with st.container(border=True):
-                st.subheader("🧭 Agent trace")
-                st.caption("One row per LangGraph node, in the order it ran.")
-                for step in result.get("agent_trace", []):
-                    icon = "⏭️" if step["skipped"] else "✅"
-                    llm_tag = ""
-                    for call in step["llm_calls"]:
-                        llm_tag = (" · 🤖 Claude" if call["used_llm"]
-                                   else " · 📋 fallback")
-                    st.markdown(
-                        f"**{icon} {step['step']}. {step['label']}** "
-                        f"<span class='trace-meta'>{step['duration_ms']:.0f} ms{llm_tag}</span><br>"
-                        f"<span class='trace-summary'>{step['summary']}</span>",
-                        unsafe_allow_html=True)
-                    with st.expander(f"Details — {step['description']}"):
-                        st.json(step["detail"])
-
-            llm_calls = [c for s in result.get("agent_trace", []) for c in s["llm_calls"]]
-            with st.expander("🔎 LLM prompts (dev view)"):
-                if not llm_calls:
-                    st.caption("No LLM call was attempted this run — the explainer "
-                               "always tries one, so this is unexpected.")
-                for call in llm_calls:
-                    status = {"ok": "✅ The model answered",
-                              "no_api_key": "📋 No API key — deterministic fallback used",
-                              "error": "⚠️ Call failed — deterministic fallback used"}.get(
-                                  call["status"], call["status"])
-                    st.markdown(f"**{call['purpose']}** — {status}"
-                                + (f" · `{call['model']}` ({call['provider_label']})" if call["model"] else "")
-                                + (f" · {call['latency_ms']:.0f} ms"
-                                   if call["latency_ms"] else ""))
-                    if call["error"]:
-                        st.caption(call["error"])
-                    st.caption("System prompt")
-                    st.code(call["system_prompt"], language="text")
-                    st.caption("User prompt")
-                    st.code(call["user_prompt"], language="text")
-                    if call["response"]:
-                        st.caption("Response")
-                        st.code(call["response"], language="text")
-                    st.divider()
-                st.caption("API keys are stripped from everything shown here "
-                           "(agents/llm_client.py `redact()`).")
-
-            with st.expander("Raw deltas (debug)"):
-                dbg = {
-                    "context_deltas": result["context_deltas"],
-                    "command_deltas": result["command_deltas"],
-                    "genre_deltas": result.get("genre_deltas"),
-                    "genre_proxy_features": result.get("genre_proxy_features"),
-                    "noise_deltas": result.get("noise_deltas"),
-                    "noise_features": result.get("noise_features"),
-                    "decided_curve": result["decided_curve"].to_dict(),
-                }
-                if proj is not None:
-                    dbg["projected_eq"] = proj.to_dict()
-                st.json(dbg)
     else:
+        ambient, content = synth_scenario(scenario_key, SR)
+        content_type_hint = SCENARIO_CONTENT_TYPE[scenario_key]
+
+    if mic_error:
+        st.session_state["last_error"] = mic_error
+        st.session_state.pop("last_result", None)
+    else:
+        ctx: Context = classify(ambient, content if content is not None else ambient,
+                                SR, content_type_hint=content_type_hint)
+        eq = get_eq()
+
+        with st.spinner("Running perception → agents → DSP…"):
+            result = run_pipeline(store, eq, USER_ID, ctx, user_command,
+                                  equalizer_spec=eq_spec, content_audio=content,
+                                  ambient_audio=ambient, sample_rate=SR,
+                                  genre_model=genre_model_name, noise_model=noise_model_name)
+
+        # Stash rather than render here: run_pipeline() above already wrote
+        # this run's entry to the store, but the History panel (further down
+        # this same script pass) already rendered from the store *before*
+        # that write happened. Rerunning is what lets History pick up the
+        # fresh entry immediately instead of only on the next unrelated click.
+        st.session_state["last_result"] = {"ctx": ctx, "result": result}
+        st.session_state.pop("last_error", None)
+    st.rerun()
+
+if st.session_state.get("last_error"):
+    st.error(f"Couldn't capture from the microphone: {st.session_state['last_error']}")
+elif st.session_state.get("last_result"):
+    ctx = st.session_state["last_result"]["ctx"]
+    result = st.session_state["last_result"]["result"]
+    eq = get_eq()
+    proj = result.get("projected_eq")
+
+    # Summary-first: the headline result (why, curve, exact slider moves) is
+    # its own tab so it's the first thing visible -- not buried under
+    # detection cards, the agent trace, and debug JSON in one long scroll.
+    tab_result, tab_detected, tab_trace, tab_debug = st.tabs(
+        ["Result", "Detected", "Agent trace", "Debug"])
+
+    with tab_result:
         with st.container(border=True):
-            st.markdown("#### 👋 Ready when you are")
-            st.caption("Pick a scenario, choose your EQ app on the left, and click "
-                       "**Run adaptation** to see the live curve and explanation appear here.")
+            exp_source = result.get("explanation_source", "template")
+            if exp_source == "llm":
+                model = result.get("explanation_model", "an LLM")
+                provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
+                badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
+            else:
+                badge = "📋 Written by the built-in template"
+            head, tag = st.columns([3, 2])
+            head.subheader("💬 Explanation")
+            tag.markdown(f"<div class='llm-badge'>{badge}</div>",
+                         unsafe_allow_html=True)
+            st.info(result["explanation"])
+            cmd_source = result.get("command_parse_source", "none")
+            if cmd_source != "none":
+                st.caption("Your typed command was parsed by "
+                           + ("**the LLM**." if cmd_source == "llm"
+                              else "**keyword rules** (no API key, or the call failed)."))
+
+        with st.container(border=True):
+            st.subheader("Live EQ curve")
+            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
+            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
+
+            curve_color = "#E8D1A7" if DARK else "#743014"
+            baseline_color = "#454A6E" if DARK else "#D6CBAE"
+            grid_color = "#2D3150" if DARK else "#EFE7D4"
+            plot_bg = "#1B1E30" if DARK else "#FFFCF6"
+            text_color = "#E7E9F5" if DARK else "#3A3428"
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=freqs_before, y=mag_before, name="Stored baseline",
+                                      line=dict(dash="dash", color=baseline_color)))
+            fig.add_trace(go.Scatter(x=freqs_after, y=mag_after, name="Live adapted curve",
+                                      line=dict(color=curve_color, width=3)))
+            if proj is not None:
+                fig.add_trace(go.Scatter(
+                    x=[b.freq_hz for b in proj.bands],
+                    y=[b.set_gain_db for b in proj.bands],
+                    name=f"{proj.spec_name} sliders",
+                    mode="markers+lines",
+                    line=dict(color="#F5A56B", width=1, dash="dot"),
+                    marker=dict(size=10, color="#F5A56B"),
+                ))
+            fig.update_xaxes(type="log", title="Frequency (Hz)", gridcolor=grid_color)
+            fig.update_yaxes(title="Gain (dB)", gridcolor=grid_color)
+            fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10),
+                               legend=dict(orientation="h", y=1.1),
+                               plot_bgcolor=plot_bg, paper_bgcolor="rgba(0,0,0,0)",
+                               font=dict(family="Inter, sans-serif", color=text_color))
+            st.plotly_chart(fig, use_container_width=True)
+
+        if proj is not None:
+            with st.container(border=True):
+                st.subheader(f"Set these on {proj.spec_name}")
+                st.table(proj.as_table_rows())
+                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
+                if proj.clipped_freqs:
+                    note += (" Some bands hit the app's range limit. That's the closest "
+                             "it can get.")
+                if not proj.has_preamp:
+                    note += ("  *This app has no preamp; the value is how much to lower the "
+                             "media/app volume so the boosts don't clip.")
+                st.caption(note)
+
+                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}" for r in proj.as_table_rows())
+                st.download_button("⬇  Download these settings (.txt)", txt,
+                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
+
+    with tab_detected:
+        with st.container(border=True):
+            st.subheader("Detected context")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Noise level", ctx.noise_level)
+            c2.metric("Content type", ctx.content_type)
+            c3.metric("Ambient level", f"{ctx.ambient_rms_db} dB")
+
+        if result.get("noise_bucket"):
+            with st.container(border=True):
+                st.subheader("Detected noise type (local ML model)")
+                n1, n2, n3 = st.columns(3)
+                n1.metric("Noise bucket", result["noise_bucket"].replace("_", " ").title())
+                n2.metric("Confidence", f"{result.get('noise_confidence', 0) * 100:.0f}%")
+                n3.metric("Model used", _model_label(result.get("noise_model_used", "-")))
+                nprobs = result.get("noise_probabilities") or {}
+                if nprobs:
+                    nlabeled = {k.replace("_", " ").title(): v for k, v in
+                               sorted(nprobs.items(), key=lambda kv: -kv[1])}
+                    st.bar_chart(nlabeled, color="#E8925A")
+        elif result.get("noise_unavailable_reason"):
+            # The raw reason (result['noise_unavailable_reason']) is a
+            # developer-facing string -- local file paths, errno text --
+            # set in agents/noise_agent.py. Deliberately not shown to the
+            # user here; see agents/noise_agent.py if it needs to change.
+            st.caption("Noise-type tuning isn't available in this deployment. "
+                       "Your EQ still adapts based on overall noise level and content type.")
+
+        if result.get("genre_bucket"):
+            with st.container(border=True):
+                st.subheader("Detected genre (local ML model)")
+                g1, g2, g3 = st.columns(3)
+                g1.metric("Genre bucket", _genre_label(result["genre_bucket"]))
+                g2.metric("Confidence", f"{result.get('genre_confidence', 0) * 100:.0f}%")
+                g3.metric("Model used", _model_label(result.get("genre_model_used", "-")))
+                probs = result.get("genre_probabilities") or {}
+                if probs:
+                    labeled = {_GENRE_CHART_NAMES.get(k, k): v for k, v in
+                              sorted(probs.items(), key=lambda kv: -kv[1])}
+                    st.bar_chart(labeled, color="#E8D1A7" if DARK else "#743014")
+        elif result.get("genre_unavailable_reason"):
+            # Same deliberate choice as the noise reason above -- see
+            # agents/genre_agent.py for the raw (developer-facing) string.
+            st.caption("Genre-aware tuning isn't available in this deployment. "
+                       "Your EQ still adapts based on room noise and content type.")
+
+    with tab_trace:
+        with st.container(border=True):
+            st.subheader("🧭 Agent trace")
+            st.caption("One row per LangGraph node, in the order it ran.")
+            for step in result.get("agent_trace", []):
+                icon = "⏭️" if step["skipped"] else "✅"
+                llm_tag = ""
+                for call in step["llm_calls"]:
+                    llm_tag = (f" · 🤖 {call['provider_label']}" if call["used_llm"]
+                               else " · 📋 fallback")
+                st.markdown(
+                    f"**{icon} {step['step']}. {step['label']}** "
+                    f"<span class='trace-meta'>{step['duration_ms']:.0f} ms{llm_tag}</span><br>"
+                    f"<span class='trace-summary'>{step['summary']}</span>",
+                    unsafe_allow_html=True)
+                with st.expander(f"Details — {step['description']}"):
+                    st.json(step["detail"])
+
+        llm_calls = [c for s in result.get("agent_trace", []) for c in s["llm_calls"]]
+        with st.expander("🔎 LLM prompts (dev view)"):
+            if not llm_calls:
+                st.caption("No LLM call was attempted this run — the explainer "
+                           "always tries one, so this is unexpected.")
+            for call in llm_calls:
+                status = {"ok": "✅ The model answered",
+                          "no_api_key": "📋 No API key — deterministic fallback used",
+                          "error": "⚠️ Call failed — deterministic fallback used"}.get(
+                              call["status"], call["status"])
+                st.markdown(f"**{call['purpose']}** — {status}"
+                            + (f" · `{call['model']}` ({call['provider_label']})" if call["model"] else "")
+                            + (f" · {call['latency_ms']:.0f} ms"
+                               if call["latency_ms"] else ""))
+                if call["error"]:
+                    st.caption(call["error"])
+                st.caption("System prompt")
+                st.code(call["system_prompt"], language="text")
+                st.caption("User prompt")
+                st.code(call["user_prompt"], language="text")
+                if call["response"]:
+                    st.caption("Response")
+                    st.code(call["response"], language="text")
+                st.divider()
+            st.caption("API keys are stripped from everything shown here "
+                       "(agents/llm_client.py `redact()`).")
+
+    with tab_debug:
+        dbg = {
+            "context_deltas": result["context_deltas"],
+            "command_deltas": result["command_deltas"],
+            "genre_deltas": result.get("genre_deltas"),
+            "genre_proxy_features": result.get("genre_proxy_features"),
+            "noise_deltas": result.get("noise_deltas"),
+            "noise_features": result.get("noise_features"),
+            "decided_curve": result["decided_curve"].to_dict(),
+        }
+        if proj is not None:
+            dbg["projected_eq"] = proj.to_dict()
+        st.json(dbg)
+else:
+    with st.container(border=True):
+        st.markdown("#### Ready when you are")
+        st.caption("Pick a scenario and your EQ app above, then click "
+                   "**Run adaptation** to see the live curve and explanation appear here.")
+
+with st.container(border=True):
+    st.subheader("History")
+    history = store.get_history(USER_ID, limit=8)
+    if not history:
+        st.caption("No adjustments logged yet.")
+    for h in reversed(history):
+        st.markdown(f"- **{h['content_type']}** / {h['noise_level']}: {h['explanation']}")
