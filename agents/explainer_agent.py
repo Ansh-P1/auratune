@@ -127,7 +127,13 @@ def _projection_clause(state: dict) -> str:
 def run_explainer_agent(state: dict, eq: ParametricEQ) -> dict:
     state["eq"] = eq
     sentence = _llm_sentence(state)
-    state["explanation_source"] = "claude" if sentence else "template"
+    state["explanation_source"] = "llm" if sentence else "template"
+    if sentence:
+        # Which backend actually wrote it -- the dashboard badge names the
+        # model rather than assuming Claude (see agents/llm_client.py).
+        last_call = (state.get("llm_calls") or [])[-1]
+        state["explanation_provider"] = last_call.provider
+        state["explanation_model"] = last_call.model
     if not sentence:
         sentence = _template_sentence(state)
     state["explanation"] = sentence + _noise_clause(state) + _genre_clause(state) + _projection_clause(state)
