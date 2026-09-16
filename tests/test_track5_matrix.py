@@ -5,9 +5,13 @@ Audits all permutations specified in Track 5 deliverables:
 - All 3 EQ App Ingestion paths: Preset JSONs, Manual custom entry, App reader OCR/fallback
 - Adversarial & Edge Cases: Empty/whitespace/unicode commands, 500-word prompt flooding, extreme +/-1000dB gain inputs, non-EQ screenshot input, missing API keys fallback
 """
+import sys
 import unittest
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import numpy as np
 
 from dsp.parametric_eq import ParametricEQ, TargetCurve
