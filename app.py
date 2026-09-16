@@ -288,13 +288,14 @@ with hr:
     st.toggle("🌙 Dark", key="dark_mode")
 
 # ---------------------------------------------------------------------------
-# Layout
+# Layout -- side-by-side like the reference build (falaksharmafs/auratune):
+# inputs in a narrower left column, results in a taller right column.
 # ---------------------------------------------------------------------------
 store = get_store()
 
-row1_left, row1_right = st.columns([1, 1], gap="medium")
+col_left, col_right = st.columns([1, 1.4], gap="medium")
 
-with row1_left:
+with col_left:
     with st.container(border=True):
         c.eyebrow("Scenario")
         scenario_options = list(SCENARIO_LABELS.keys()) + [REALTIME_KEY]
@@ -337,7 +338,6 @@ with row1_left:
             placeholder="e.g. make voices clearer, less bass",
         )
 
-with row1_right:
     with st.container(border=True):
         t_eq, t_models = st.tabs(["Your EQ app", "ML models"])
 
@@ -376,7 +376,11 @@ with row1_right:
                 st.caption("Noise-type tuning isn't available in this deployment. "
                            "Your EQ still adapts based on overall noise level and content type.")
 
-run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
+        run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
+
+    with st.container(border=True):
+        c.eyebrow("History")
+        c.timeline(store.get_history(USER_ID, limit=8))
 
 if run_clicked:
     mic_error = None
@@ -421,72 +425,17 @@ if run_clicked:
         st.session_state.pop("last_error", None)
     st.rerun()
 
-if st.session_state.get("last_error"):
-    st.error(f"Couldn't capture from the microphone: {st.session_state['last_error']}")
-elif st.session_state.get("last_result"):
-    ctx = st.session_state["last_result"]["ctx"]
-    result = st.session_state["last_result"]["result"]
-    eq = get_eq()
-    proj = result.get("projected_eq")
+with col_right:
+    if st.session_state.get("last_error"):
+        st.error(f"Couldn't capture from the microphone: {st.session_state['last_error']}")
+    elif st.session_state.get("last_result"):
+        ctx = st.session_state["last_result"]["ctx"]
+        result = st.session_state["last_result"]["result"]
+        eq = get_eq()
+        proj = result.get("projected_eq")
 
-    # Summary-first: the headline result (why, curve, exact slider moves) is
-    # its own tab so it's the first thing visible -- not buried under
-    # detection cards, the agent trace, and debug JSON in one long scroll.
-    tab_result, tab_detected, tab_trace, tab_debug = st.tabs(
-        ["Result", "Detected", "Agent trace", "Debug"])
-
-    with tab_result:
-        with st.container(border=True):
-            exp_source = result.get("explanation_source", "template")
-            if exp_source == "llm":
-                model = result.get("explanation_model", "an LLM")
-                provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
-                badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
-            else:
-                badge = "📋 Written by the built-in template"
-            head, tag = st.columns([3, 2])
-            with head:
-                c.eyebrow("Explanation")
-            tag.markdown(f"<span class='at-chip'>{badge}</span>", unsafe_allow_html=True)
-            st.info(result["explanation"])
-            cmd_source = result.get("command_parse_source", "none")
-            if cmd_source != "none":
-                st.caption("Your typed command was parsed by "
-                           + ("**the LLM**." if cmd_source == "llm"
-                              else "**keyword rules** (no API key, or the call failed)."))
-
-        with st.container(border=True):
-            c.eyebrow("Live EQ curve")
-            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
-            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
-            charts.eq_curve(freqs_before, mag_before, freqs_after, mag_after, proj=proj)
-
-        if proj is not None:
-            with st.container(border=True):
-                c.eyebrow(f"Set these on {proj.spec_name}")
-                gmin = eq_spec.gain_min_db if eq_spec is not None else -12.0
-                gmax = eq_spec.gain_max_db if eq_spec is not None else 12.0
-                c.fader_rack(proj.bands, gain_min=gmin, gain_max=gmax,
-                           clipped=set(proj.clipped_freqs or []))
-
-                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
-                if proj.clipped_freqs:
-                    note += (" Bands outlined in red hit the app's range limit — "
-                            "that's the closest it can get.")
-                if not proj.has_preamp:
-                    note += (" *This app has no preamp; the value is how much to lower the "
-                            "media/app volume so the boosts don't clip.")
-                st.caption(note)
-
-                with st.expander("Values as a table"):
-                    st.table(proj.as_table_rows())
-
-                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}"
-                                for r in proj.as_table_rows())
-                st.download_button("⬇ Download these settings (.txt)", txt,
-                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
-
-    with tab_detected:
+        # Flowing single-column cards, matching the reference build's layout
+        # (falaksharmafs/auratune) -- not tabbed.
         with st.container(border=True):
             c.eyebrow("Detected context")
             c.stats(
@@ -544,7 +493,56 @@ elif st.session_state.get("last_result"):
             st.caption("Genre-aware tuning isn't available in this deployment. "
                        "Your EQ still adapts based on room noise and content type.")
 
-    with tab_trace:
+        with st.container(border=True):
+            c.eyebrow("Live EQ curve")
+            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
+            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
+            charts.eq_curve(freqs_before, mag_before, freqs_after, mag_after, proj=proj)
+
+        if proj is not None:
+            with st.container(border=True):
+                c.eyebrow(f"Set these on {proj.spec_name}")
+                gmin = eq_spec.gain_min_db if eq_spec is not None else -12.0
+                gmax = eq_spec.gain_max_db if eq_spec is not None else 12.0
+                c.fader_rack(proj.bands, gain_min=gmin, gain_max=gmax,
+                           clipped=set(proj.clipped_freqs or []))
+
+                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
+                if proj.clipped_freqs:
+                    note += (" Bands outlined in red hit the app's range limit — "
+                            "that's the closest it can get.")
+                if not proj.has_preamp:
+                    note += (" *This app has no preamp; the value is how much to lower the "
+                            "media/app volume so the boosts don't clip.")
+                st.caption(note)
+
+                with st.expander("Values as a table"):
+                    st.table(proj.as_table_rows())
+
+                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}"
+                                for r in proj.as_table_rows())
+                st.download_button("⬇ Download these settings (.txt)", txt,
+                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
+
+        with st.container(border=True):
+            exp_source = result.get("explanation_source", "template")
+            if exp_source == "llm":
+                model = result.get("explanation_model", "an LLM")
+                provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
+                badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
+            else:
+                badge = "📋 Written by the built-in template"
+            head, tag = st.columns([3, 2])
+            with head:
+                c.eyebrow("Explanation")
+            tag.markdown(f"<span class='at-chip'>{badge}</span>", unsafe_allow_html=True)
+            st.info(result["explanation"])
+            cmd_source = result.get("command_parse_source", "none")
+            if cmd_source != "none":
+                st.caption("Your typed command was parsed by "
+                           + ("**the LLM**." if cmd_source == "llm"
+                              else "**keyword rules** (no API key, or the call failed)."))
+
         with st.container(border=True):
             c.eyebrow("Agent trace")
             st.caption("One row per LangGraph node, in the order it ran.")
@@ -589,23 +587,19 @@ elif st.session_state.get("last_result"):
             st.caption("API keys are stripped from everything shown here "
                        "(agents/llm_client.py `redact()`).")
 
-    with tab_debug:
-        dbg = {
-            "context_deltas": result["context_deltas"],
-            "command_deltas": result["command_deltas"],
-            "genre_deltas": result.get("genre_deltas"),
-            "genre_proxy_features": result.get("genre_proxy_features"),
-            "noise_deltas": result.get("noise_deltas"),
-            "noise_features": result.get("noise_features"),
-            "decided_curve": result["decided_curve"].to_dict(),
-        }
-        if proj is not None:
-            dbg["projected_eq"] = proj.to_dict()
-        st.json(dbg)
-else:
-    with st.container(border=True):
-        c.empty_state()
-
-with st.container(border=True):
-    c.eyebrow("History")
-    c.timeline(store.get_history(USER_ID, limit=8))
+        with st.expander("Raw deltas (debug)"):
+            dbg = {
+                "context_deltas": result["context_deltas"],
+                "command_deltas": result["command_deltas"],
+                "genre_deltas": result.get("genre_deltas"),
+                "genre_proxy_features": result.get("genre_proxy_features"),
+                "noise_deltas": result.get("noise_deltas"),
+                "noise_features": result.get("noise_features"),
+                "decided_curve": result["decided_curve"].to_dict(),
+            }
+            if proj is not None:
+                dbg["projected_eq"] = proj.to_dict()
+            st.json(dbg)
+    else:
+        with st.container(border=True):
+            c.empty_state()
