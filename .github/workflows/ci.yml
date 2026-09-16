@@ -38,12 +38,14 @@ jobs:
       - name: Test EQ specs
         run: python tests/test_eq_specs.py
 
-      - name: Test Genre classifier
+      - name: Test genre classifier
         run: python tests/test_genre_classifier.py
 
-      - name: Test Noise classifier
+      - name: Test noise classifier
         run: python tests/test_noise_classifier.py
 
-      - name: Test Profile store
+      - name: Test profile store
         run: python tests/test_profile_store.py
 
+      - name: Test agent trace
+        run: python tests/test_agent_trace.py

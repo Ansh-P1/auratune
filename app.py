@@ -172,6 +172,20 @@ div.stButton > button[kind="primary"]:hover {
     margin-bottom: 0.5rem;
     line-height: 1.4;
 }
+.llm-badge {
+    display: inline-block;
+    background: var(--at-primary-soft);
+    color: var(--at-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--at-border);
+    margin-top: 0.55rem;
+    float: right;
+}
+.trace-meta { color: var(--at-muted); font-size: 0.78rem; }
+.trace-summary { color: var(--at-ink); font-size: 0.9rem; }
 </style>
 """
     return (template.replace("__VARS__", "{" + vars_css + "}")
@@ -628,8 +642,63 @@ with col_right:
                                        file_name=f"{_slugify(proj.spec_name)}_settings.txt")
 
             with st.container(border=True):
-                st.subheader("💬 Explanation")
+                exp_source = result.get("explanation_source", "template")
+                badge = ("🤖 Written by Claude" if exp_source == "claude"
+                         else "📋 Written by the built-in template")
+                head, tag = st.columns([3, 2])
+                head.subheader("💬 Explanation")
+                tag.markdown(f"<div class='llm-badge'>{badge}</div>",
+                             unsafe_allow_html=True)
                 st.info(result["explanation"])
+                cmd_source = result.get("command_parse_source", "none")
+                if cmd_source != "none":
+                    st.caption("Your typed command was parsed by "
+                               + ("**Claude**." if cmd_source == "claude"
+                                  else "**keyword rules** (no API key, or the call failed)."))
+
+            with st.container(border=True):
+                st.subheader("🧭 Agent trace")
+                st.caption("One row per LangGraph node, in the order it ran.")
+                for step in result.get("agent_trace", []):
+                    icon = "⏭️" if step["skipped"] else "✅"
+                    llm_tag = ""
+                    for call in step["llm_calls"]:
+                        llm_tag = (" · 🤖 Claude" if call["used_llm"]
+                                   else " · 📋 fallback")
+                    st.markdown(
+                        f"**{icon} {step['step']}. {step['label']}** "
+                        f"<span class='trace-meta'>{step['duration_ms']:.0f} ms{llm_tag}</span><br>"
+                        f"<span class='trace-summary'>{step['summary']}</span>",
+                        unsafe_allow_html=True)
+                    with st.expander(f"Details — {step['description']}"):
+                        st.json(step["detail"])
+
+            llm_calls = [c for s in result.get("agent_trace", []) for c in s["llm_calls"]]
+            with st.expander("🔎 Claude prompts (dev view)"):
+                if not llm_calls:
+                    st.caption("No Claude call was attempted this run — the explainer "
+                               "always tries one, so this is unexpected.")
+                for call in llm_calls:
+                    status = {"ok": "✅ Claude answered",
+                              "no_api_key": "📋 No API key — deterministic fallback used",
+                              "error": "⚠️ Call failed — deterministic fallback used"}.get(
+                                  call["status"], call["status"])
+                    st.markdown(f"**{call['purpose']}** — {status}"
+                                + (f" · `{call['model']}`" if call["model"] else "")
+                                + (f" · {call['latency_ms']:.0f} ms"
+                                   if call["latency_ms"] else ""))
+                    if call["error"]:
+                        st.caption(call["error"])
+                    st.caption("System prompt")
+                    st.code(call["system_prompt"], language="text")
+                    st.caption("User prompt")
+                    st.code(call["user_prompt"], language="text")
+                    if call["response"]:
+                        st.caption("Response")
+                        st.code(call["response"], language="text")
+                    st.divider()
+                st.caption("API keys are stripped from everything shown here "
+                           "(agents/llm_client.py `redact()`).")
 
             with st.expander("Raw deltas (debug)"):
                 dbg = {
