@@ -24,7 +24,13 @@ import numpy as np
 try:
     import sounddevice as sd
     _HAS_SOUNDDEVICE = True
-except ImportError:
+except (ImportError, OSError):
+    # ImportError: the package itself isn't installed.
+    # OSError: the package imports fine but its native PortAudio library
+    # isn't present -- exactly what happens on Streamlit Community Cloud's
+    # containers, which have no audio hardware/subsystem at all. Either way
+    # this module should degrade to "no mic available", not crash the app
+    # that imports it.
     _HAS_SOUNDDEVICE = False
 
 
