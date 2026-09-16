@@ -9,7 +9,8 @@ sentence if no API key is set, so the UI always has something to show.
 from __future__ import annotations
 
 from dsp.parametric_eq import ParametricEQ
-from agents.llm_client import complete
+from agents.llm_client import complete_with_meta
+from agents.trace import record_llm_call
 
 
 def _template_sentence(state: dict) -> str:
@@ -56,7 +57,10 @@ def _llm_sentence(state: dict) -> str:
         f"Deltas (dB): volume={deltas['volume_db']}, bass={deltas['bass_gain_db']}, "
         f"presence/vocal={deltas['presence_gain_db']}, treble={deltas['treble_gain_db']}."
     )
-    return complete(system, user, max_tokens=100)
+    sentence, call = complete_with_meta(system, user, purpose="explanation",
+                                        max_tokens=100)
+    record_llm_call(state, call)
+    return sentence
 
 
 def _genre_clause(state: dict) -> str:
@@ -123,6 +127,7 @@ def _projection_clause(state: dict) -> str:
 def run_explainer_agent(state: dict, eq: ParametricEQ) -> dict:
     state["eq"] = eq
     sentence = _llm_sentence(state)
+    state["explanation_source"] = "claude" if sentence else "template"
     if not sentence:
         sentence = _template_sentence(state)
     state["explanation"] = sentence + _noise_clause(state) + _genre_clause(state) + _projection_clause(state)

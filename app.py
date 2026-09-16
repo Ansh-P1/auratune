@@ -26,11 +26,12 @@ from dsp.equalizer_spec import EqualizerSpec, all_specs, save_spec
 from perception.eq_app_reader import read_equalizer_screenshot
 from perception.context_classifier import classify, Context
 from perception.synth_scenarios import synth_scenario, SCENARIOS as SCENARIO_LABELS, SCENARIO_CONTENT_TYPE
-from perception.live_capture import record_ambient, is_available as mic_is_available, MicUnavailableError
+from perception.live_capture import decode_browser_audio, MicUnavailableError
 from perception import genre_classifier
 from perception import noise_classifier
 from data.db import ProfileStore
 from agents.graph import run_pipeline
+from agents.spec_edit_parser import parse_spec_edit
 
 st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide")
 
@@ -46,7 +47,7 @@ DARK = st.session_state.dark_mode
 # toggle widget near the title). .streamlit/config.toml sets the base
 # Streamlit theme (fixed at server start, can't change at runtime); this
 # CSS layer is what actually switches on the fly, driven by
-# st.session_state.dark_mode. __VARS__/__SHADOW__/__PRIMARY_TEXT__ are
+# st.session_state.dark_mode. __VARS__/__SHADOW__/__PRIMARY_TEXT__/__CHIP_COLOR__ are
 # plain string placeholders (not an f-string) so the CSS itself never
 # needs its braces escaped.
 # ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ def _build_css(dark: bool) -> str:
 """
         shadow = "0 2px 14px rgba(0, 0, 0, 0.35)"
         primary_text = "#25344F"
+        chip_color = "#FFB37E"
     else:
         vars_css = """
     --at-primary: #743014;
@@ -79,6 +81,7 @@ def _build_css(dark: bool) -> str:
 """
         shadow = "0 2px 10px rgba(45, 49, 66, 0.04)"
         primary_text = "#ffffff"
+        chip_color = "#A6551F"
 
     template = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -181,11 +184,40 @@ body div:has(> [role="listbox"]) { background: var(--at-card) !important; border
     background: var(--at-card) !important; color: var(--at-ink) !important; border-color: var(--at-border) !important;
 }
 [data-testid="stArrowVegaLiteChart"] { background: #FFFCF6 !important; border-radius: 10px; padding: 8px; }
+.at-chip {
+    display: inline-block;
+    background: var(--at-accent-soft);
+    color: __CHIP_COLOR__;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+.llm-badge {
+    display: inline-block;
+    background: var(--at-primary-soft);
+    color: var(--at-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--at-border);
+    margin-top: 0.55rem;
+    float: right;
+}
+.trace-meta { color: var(--at-muted); font-size: 0.78rem; }
+.trace-summary { color: var(--at-ink); font-size: 0.9rem; }
 </style>
 """
     return (template.replace("__VARS__", "{" + vars_css + "}")
                     .replace("__SHADOW__", shadow)
-                    .replace("__PRIMARY_TEXT__", primary_text))
+                    .replace("__PRIMARY_TEXT__", primary_text)
+                    .replace("__CHIP_COLOR__", chip_color))
 
 
 st.markdown(_build_css(DARK), unsafe_allow_html=True)
@@ -255,6 +287,25 @@ def _spec_editor(prefill: EqualizerSpec | None, key: str) -> EqualizerSpec | Non
                     else "62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000")
     freq_str = st.text_input("Band frequencies (Hz, comma-separated)",
                              freq_default, key=f"{key}_freqs")
+
+    _NL_FIELD_TO_WIDGET = {"gain_min_db": "gmin", "gain_max_db": "gmax", "step_db": "step"}
+    nl_col, nl_btn_col = st.columns([5, 1])
+    nl_text = nl_col.text_input(
+        "Or just describe it in plain English",
+        placeholder='e.g. "my range is -76.5 to 7.5 dB" or "step is 0.5 dB"',
+        key=f"{key}_nl",
+    )
+    nl_btn_col.markdown("<div style='height:1.6rem'></div>", unsafe_allow_html=True)
+    if nl_btn_col.button("Apply", key=f"{key}_nl_apply"):
+        if nl_text.strip():
+            changes = parse_spec_edit(nl_text)
+            if changes:
+                for field, value in changes.items():
+                    st.session_state[f"{key}_{_NL_FIELD_TO_WIDGET[field]}"] = value
+                st.success("Updated " + ", ".join(changes) + " below.")
+            else:
+                st.caption('Couldn\'t find a number in that -- try e.g. "range -76.5 to 7.5 dB".')
+
     c1, c2, c3 = st.columns(3)
     gmin = c1.number_input("Min dB", value=float(p.gain_min_db) if p else -12.0,
                            step=1.0, key=f"{key}_gmin")
@@ -373,6 +424,15 @@ def eq_spec_picker() -> EqualizerSpec | None:
         )
         if spec.notes:
             st.caption(f"_{spec.notes}_")
+        with st.expander("✏️ Edit values (e.g. match your app's actual dB range)"):
+            st.caption("Presets are a starting point — your actual app may differ "
+                       "(e.g. Wavelet's preamp can go down to −76.5 dB, not the "
+                       "±12 dB shown above). Adjust the range, step, or bands to "
+                       "match what your app really shows, then optionally save it "
+                       "as its own preset below.")
+            edited = _spec_editor(spec, key=f"edit_{_slugify(choice)}")
+            if edited is not None:
+                spec = edited
         return spec
 
     if choice == "Manual…":
@@ -440,19 +500,18 @@ with row1_left:
         )
 
         realtime_content_hint = "music"
+        realtime_audio = None
         if scenario_key == REALTIME_KEY:
             realtime_content_hint = st.selectbox(
                 "What's playing? (real-time mode has no separate content feed,"
                 " so tell it what to expect)",
                 ["podcast", "music", "movie"], index=1,
             )
-            if not mic_is_available():
-                st.caption("No microphone detected on this machine/browser session. "
-                           "Run adaptation will show a friendly error instead of capturing audio.")
-            else:
-                st.caption("Clicking Run adaptation will record 10 seconds from your "
-                           "default microphone -- speak, play music, or just let the "
-                           "room's ambient noise through.")
+            st.caption("Record a clip below -- speak, play music, or just let the "
+                       "room's ambient noise through -- then click Run adaptation. "
+                       "Recording happens in your browser, so this works even on a "
+                       "deployed server with no microphone of its own.")
+            realtime_audio = st.audio_input("🎙️ Record ambient audio", key="realtime_mic_input")
 
             youtube_url = st.text_input(
                 "▶ Test with a YouTube video (optional)",
@@ -513,13 +572,18 @@ if run_clicked:
     mic_error = None
     content = None
     if scenario_key == REALTIME_KEY:
-        try:
-            with st.spinner("Listening for 10 seconds…"):
-                ambient = record_ambient(10.0, SR)
-            content_type_hint = realtime_content_hint
-        except MicUnavailableError as exc:
-            mic_error = str(exc)
+        if realtime_audio is None:
+            mic_error = ("No audio recorded yet -- click the microphone icon "
+                         "above, record a clip, then click Run adaptation again.")
             ambient = None
+        else:
+            try:
+                with st.spinner("Decoding your recording…"):
+                    ambient = decode_browser_audio(realtime_audio.getvalue(), SR)
+                content_type_hint = realtime_content_hint
+            except MicUnavailableError as exc:
+                mic_error = str(exc)
+                ambient = None
     else:
         ambient, content = synth_scenario(scenario_key, SR)
         content_type_hint = SCENARIO_CONTENT_TYPE[scenario_key]
@@ -557,13 +621,25 @@ elif st.session_state.get("last_result"):
 
     # Summary-first: the headline result (why, curve, exact slider moves) is
     # its own tab so it's the first thing visible -- not buried under
-    # detection cards and debug JSON in one long scroll.
-    tab_result, tab_detected, tab_debug = st.tabs(["Result", "Detected", "Debug"])
+    # detection cards, the agent trace, and debug JSON in one long scroll.
+    tab_result, tab_detected, tab_trace, tab_debug = st.tabs(
+        ["Result", "Detected", "Agent trace", "Debug"])
 
     with tab_result:
         with st.container(border=True):
-            st.subheader("Explanation")
+            exp_source = result.get("explanation_source", "template")
+            badge = ("🤖 Written by Claude" if exp_source == "claude"
+                     else "📋 Written by the built-in template")
+            head, tag = st.columns([3, 2])
+            head.subheader("💬 Explanation")
+            tag.markdown(f"<div class='llm-badge'>{badge}</div>",
+                         unsafe_allow_html=True)
             st.info(result["explanation"])
+            cmd_source = result.get("command_parse_source", "none")
+            if cmd_source != "none":
+                st.caption("Your typed command was parsed by "
+                           + ("**Claude**." if cmd_source == "claude"
+                              else "**keyword rules** (no API key, or the call failed)."))
 
         with st.container(border=True):
             st.subheader("Live EQ curve")
@@ -660,6 +736,51 @@ elif st.session_state.get("last_result"):
             # agents/genre_agent.py for the raw (developer-facing) string.
             st.caption("Genre-aware tuning isn't available in this deployment. "
                        "Your EQ still adapts based on room noise and content type.")
+
+    with tab_trace:
+        with st.container(border=True):
+            st.subheader("🧭 Agent trace")
+            st.caption("One row per LangGraph node, in the order it ran.")
+            for step in result.get("agent_trace", []):
+                icon = "⏭️" if step["skipped"] else "✅"
+                llm_tag = ""
+                for call in step["llm_calls"]:
+                    llm_tag = (" · 🤖 Claude" if call["used_llm"]
+                               else " · 📋 fallback")
+                st.markdown(
+                    f"**{icon} {step['step']}. {step['label']}** "
+                    f"<span class='trace-meta'>{step['duration_ms']:.0f} ms{llm_tag}</span><br>"
+                    f"<span class='trace-summary'>{step['summary']}</span>",
+                    unsafe_allow_html=True)
+                with st.expander(f"Details — {step['description']}"):
+                    st.json(step["detail"])
+
+        llm_calls = [c for s in result.get("agent_trace", []) for c in s["llm_calls"]]
+        with st.expander("🔎 Claude prompts (dev view)"):
+            if not llm_calls:
+                st.caption("No Claude call was attempted this run — the explainer "
+                           "always tries one, so this is unexpected.")
+            for call in llm_calls:
+                status = {"ok": "✅ Claude answered",
+                          "no_api_key": "📋 No API key — deterministic fallback used",
+                          "error": "⚠️ Call failed — deterministic fallback used"}.get(
+                              call["status"], call["status"])
+                st.markdown(f"**{call['purpose']}** — {status}"
+                            + (f" · `{call['model']}`" if call["model"] else "")
+                            + (f" · {call['latency_ms']:.0f} ms"
+                               if call["latency_ms"] else ""))
+                if call["error"]:
+                    st.caption(call["error"])
+                st.caption("System prompt")
+                st.code(call["system_prompt"], language="text")
+                st.caption("User prompt")
+                st.code(call["user_prompt"], language="text")
+                if call["response"]:
+                    st.caption("Response")
+                    st.code(call["response"], language="text")
+                st.divider()
+            st.caption("API keys are stripped from everything shown here "
+                       "(agents/llm_client.py `redact()`).")
 
     with tab_debug:
         dbg = {
