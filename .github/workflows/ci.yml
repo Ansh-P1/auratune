@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy librosa soundfile langgraph langchain-core anthropic
+          pip install numpy scipy librosa soundfile langgraph langchain-core anthropic scikit-learn joblib
 
       - name: Test DSP
         run: python tests/test_dsp.py
@@ -37,3 +37,13 @@ jobs:
 
       - name: Test EQ specs
         run: python tests/test_eq_specs.py
+
+      - name: Test Genre classifier
+        run: python tests/test_genre_classifier.py
+
+      - name: Test Noise classifier
+        run: python tests/test_noise_classifier.py
+
+      - name: Test Profile store
+        run: python tests/test_profile_store.py
+
