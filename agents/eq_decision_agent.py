@@ -18,6 +18,7 @@ from dataclasses import replace
 
 from dsp.parametric_eq import TargetCurve
 from dsp.genre_curves import GENRE_CURVES, GENRE_BLEND_WEIGHT
+from dsp.noise_curves import NOISE_CURVES, NOISE_BLEND_WEIGHT
 from agents.llm_client import complete
 from config import MAX_GAIN_DB
 
@@ -84,6 +85,24 @@ def run_eq_decision_agent(state: dict) -> dict:
         bass_gain_db=baseline.bass_gain_db + bass_delta,
     )
 
+    # Noise agent runs upstream (agents/noise_agent.py) on the ambient
+    # buffer; blend its bucket's tuned deltas in on top of the RMS-based
+    # noise_level deltas above -- a refinement of *what kind* of noise,
+    # not a replacement for the always-on loudness read. Same
+    # confidence-scaled blending pattern as the genre agent below.
+    noise_bucket = state.get("noise_bucket")
+    noise_deltas = {}
+    if noise_bucket in NOISE_CURVES:
+        weight = NOISE_BLEND_WEIGHT * state.get("noise_confidence", 0.0)
+        bass_d, presence_d, treble_d = NOISE_CURVES[noise_bucket]
+        noise_deltas = {
+            "bass_gain_db": round(bass_d * weight, 2),
+            "presence_gain_db": round(presence_d * weight, 2),
+            "treble_gain_db": round(treble_d * weight, 2),
+        }
+        for key, delta in noise_deltas.items():
+            setattr(decided, key, getattr(decided, key) + delta)
+
     # Genre agent runs upstream (agents/genre_agent.py) only for music
     # content; blend its bucket's tuned deltas in, scaled by both the
     # fixed GENRE_BLEND_WEIGHT and the classifier's own confidence, so a
@@ -116,4 +135,5 @@ def run_eq_decision_agent(state: dict) -> dict:
     state["command_deltas"] = command_deltas
     state["context_deltas"] = {"presence_gain_db": presence_delta, "bass_gain_db": bass_delta}
     state["genre_deltas"] = genre_deltas
+    state["noise_deltas"] = noise_deltas
     return state

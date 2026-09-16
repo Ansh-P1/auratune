@@ -73,6 +73,21 @@ def _genre_clause(state: dict) -> str:
             f"local {model} model), so I leaned the curve that way.")
 
 
+def _noise_clause(state: dict) -> str:
+    """One extra clause naming the ML-detected ambient noise type, when
+    the Noise agent (agents/noise_agent.py) ran and actually changed
+    anything."""
+    bucket = state.get("noise_bucket")
+    noise_deltas = state.get("noise_deltas") or {}
+    if not bucket or not any(abs(v) >= 0.05 for v in noise_deltas.values()):
+        return ""
+    label = bucket.replace("_", " ")
+    confidence = state.get("noise_confidence", 0.0)
+    model = state.get("noise_model_used", "")
+    return (f" The room sounds like {label} ({confidence * 100:.0f}% confidence, "
+            f"local {model} model).")
+
+
 def _projection_clause(state: dict) -> str:
     """One extra sentence naming the actual slider moves for the user's EQ app."""
     proj = state.get("projected_eq")
@@ -110,5 +125,5 @@ def run_explainer_agent(state: dict, eq: ParametricEQ) -> dict:
     sentence = _llm_sentence(state)
     if not sentence:
         sentence = _template_sentence(state)
-    state["explanation"] = sentence + _genre_clause(state) + _projection_clause(state)
+    state["explanation"] = sentence + _noise_clause(state) + _genre_clause(state) + _projection_clause(state)
     return state
