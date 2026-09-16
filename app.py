@@ -19,7 +19,9 @@ Run with: streamlit run app.py
 """
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import streamlit as st
 
@@ -286,6 +288,90 @@ with hl:
 with hr:
     st.write("")
     st.toggle("🌙 Dark", key="dark_mode")
+
+# ---------------------------------------------------------------------------
+# Model performance panel (Track 2 / classification stage) -- reads straight
+# from ml/models/{metrics,noise_metrics}.json so real held-out test numbers
+# are visible on the deployed site itself, not just in ml/model_review*.ipynb
+# or in the single live-prediction stat block shown after a run. Shows up
+# with zero setup cost: if a report file is missing (models not trained yet,
+# e.g. on a fresh deploy with no ml/data/ or ml/models/ committed -- see
+# .gitignore), that classifier's card just says so instead of raising.
+# ---------------------------------------------------------------------------
+_ML_MODELS_DIR = Path(__file__).parent / "ml" / "models"
+_MODEL_TYPE_LABEL = {
+    "logistic_regression": "Logistic Regression",
+    "random_forest": "Random Forest (bagging)",
+    "gradient_boosting": "Gradient Boosting",
+    "neural_net": "Neural Net (PyTorch)",
+}
+
+
+def _load_metrics_report(filename: str) -> dict | None:
+    path = _ML_MODELS_DIR / filename
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _render_metrics_card(title: str, report: dict | None, bucket_key: str,
+                          train_cmd: str) -> None:
+    c.eyebrow(title)
+    if report is None:
+        st.caption(
+            f"Not trained in this deployment yet. Run `{train_cmd}` locally "
+            f"to populate this (see `ml/README.md`) -- the pipeline itself "
+            f"still works fine without it, just without this classifier's "
+            f"tuning layer."
+        )
+        return
+
+    best = report["best_model"]
+    best_r = report["results"][best]
+    buckets = report.get(bucket_key, [])
+    c.stats([
+        ("Best model", _MODEL_TYPE_LABEL.get(best, best)),
+        ("Test accuracy", f"{best_r['accuracy'] * 100:.1f}%"),
+        ("F1 (macro)", f"{best_r['f1_macro']:.3f}"),
+    ], hot=1, mono={1, 2})
+    st.caption(
+        f"{report.get('n_rows_used', '?')} clips/tracks · "
+        f"{len(buckets)} buckets ({', '.join(b.replace('_', ' ') for b in buckets)}) · "
+        f"dataset: {report.get('dataset', 'n/a')}"
+    )
+    rows = [
+        {
+            "Model": _MODEL_TYPE_LABEL.get(name, name),
+            "Accuracy": f"{r['accuracy'] * 100:.1f}%",
+            "F1 (macro)": f"{r['f1_macro']:.3f}",
+            "": "← best" if name == best else "",
+        }
+        for name, r in report["results"].items()
+    ]
+    st.table(rows)
+
+
+with st.expander("📊 Model performance (local ML classifiers)", expanded=False):
+    st.caption(
+        "Real held-out test-set numbers from the two locally-trained "
+        "classifiers, read straight from `ml/models/*.json` -- not just the "
+        "one live prediction shown after a run. See `ml/model_review.ipynb` "
+        "and `ml/model_review_noise.ipynb` for the full breakdown "
+        "(confusion matrices, feature importance, per-class F1)."
+    )
+    perf_col1, perf_col2 = st.columns(2)
+    with perf_col1:
+        _render_metrics_card(
+            "Genre / mood classifier", _load_metrics_report("metrics.json"),
+            "genre_buckets", "python ml/train.py")
+    with perf_col2:
+        _render_metrics_card(
+            "Noise-type classifier", _load_metrics_report("noise_metrics.json"),
+            "noise_buckets", "python ml/train_noise.py")
+
 
 # ---------------------------------------------------------------------------
 # Layout
