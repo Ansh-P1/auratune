@@ -58,8 +58,10 @@ class PipelineState(TypedDict, total=False):
     # can show one row per node and say whether Claude or a fallback ran.
     agent_trace: list
     llm_calls: list
-    command_parse_source: str    # "claude" | "rules" | "none"
-    explanation_source: str      # "claude" | "template"
+    command_parse_source: str    # "llm" | "rules" | "none"
+    explanation_source: str      # "llm" | "template"
+    explanation_provider: str    # "anthropic" | "groq"
+    explanation_model: str
 
 
 def build_graph(store: ProfileStore, eq: ParametricEQ,

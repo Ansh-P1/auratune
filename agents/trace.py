@@ -86,8 +86,8 @@ def _summarize(node: str, state: dict) -> tuple[str, dict]:
         source = state.get("command_parse_source", "none")
         if source == "none":
             summary = "Applied context deltas (no typed command)"
-        elif source == "claude":
-            summary = "Applied context deltas + parsed your command with Claude"
+        elif source == "llm":
+            summary = "Applied context deltas + parsed your command with the LLM"
         else:
             summary = "Applied context deltas + parsed your command with keyword rules"
         return summary, {
@@ -111,7 +111,11 @@ def _summarize(node: str, state: dict) -> tuple[str, dict]:
 
     if node == "explainer_agent":
         source = state.get("explanation_source", "template")
-        wrote = "Claude wrote" if source == "claude" else "Template wrote"
+        if source == "llm":
+            model = state.get("explanation_model") or "the LLM"
+            wrote = f"`{model}` wrote"
+        else:
+            wrote = "Template wrote"
         return f"{wrote} the explanation", {"explanation": state.get("explanation")}
 
     return "Ran", {}
@@ -152,5 +156,5 @@ def traced(node: str, fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
 
 
 def explanation_source(state: dict) -> Optional[str]:
-    """"claude" or "template" -- what actually wrote the sentence on screen."""
+    """"llm" or "template" -- what actually wrote the sentence on screen."""
     return state.get("explanation_source")
