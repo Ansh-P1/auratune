@@ -5,47 +5,49 @@ Nothing else in the app should hard-code a hex value; import tokens() instead.
 from __future__ import annotations
 import streamlit as st
 
-## Palette is Mitaali's (Track 4 cold-start/theme pass) -- warm paper +
-## maroon/tan accent -- mapped onto this token schema so Falak's component
-## system (theme.py/components.py/charts.py) drives every color from it.
+## Palette is Falak's original -- near-black + teal accent (dark), warm
+## off-white + teal accent (light). Restored to match his reference build
+## (falaksharmafs/auratune, live at
+## auratune-e9snhdhdkrb88pwx6udmsc.streamlit.app) after a brief detour
+## through Mitaali's warm-paper/maroon palette.
 LIGHT: dict = {
-    "bg":            "#F5EFE1",
-    "bg_elev":       "#FFFCF6",
-    "card":          "#FFFCF6",
-    "border":        "#E8DFC9",
-    "border_strong": "#D8C9A0",
-    "ink":           "#3A3428",
-    "ink_soft":      "#55503F",
-    "muted":         "#8C8370",
-    "accent":        "#743014",
-    "accent_soft":   "#F2DFDA",
-    "accent_ink":    "#743014",
-    "warm":          "#E8925A",
-    "warm_soft":     "#F3E4D3",
-    "grid":          "#EFE7D4",
+    "bg":            "#FAFAF8",
+    "bg_elev":       "#FFFFFF",
+    "card":          "#FFFFFF",
+    "border":        "#E6E4DF",
+    "border_strong": "#D4D1C9",
+    "ink":           "#16171A",
+    "ink_soft":      "#54565C",
+    "muted":         "#5C6069",
+    "accent":        "#0B7C8C",
+    "accent_soft":   "#E3F4F6",
+    "accent_ink":    "#065561",
+    "warm":          "#B4632A",
+    "warm_soft":     "#FBEDE2",
+    "grid":          "#EDEBE6",
     "danger":        "#C4453A",
-    "shadow":        "0 2px 10px rgba(45,49,66,.04)",
-    "shadow_lift":   "0 6px 20px rgba(45,49,66,.10)",
+    "shadow":        "0 1px 2px rgba(16,17,26,.04),0 8px 24px -12px rgba(16,17,26,.10)",
+    "shadow_lift":   "0 2px 4px rgba(16,17,26,.06),0 16px 40px -16px rgba(16,17,26,.18)",
 }
 
 DARK: dict = {
-    "bg":            "#12141F",
-    "bg_elev":       "#1B1E30",
-    "card":          "#1B1E30",
-    "border":        "#2D3150",
-    "border_strong": "#3D4166",
-    "ink":           "#E7E9F5",
-    "ink_soft":      "#D5D8F0",
-    "muted":         "#C5CAE9",
-    "accent":        "#D5B893",
-    "accent_soft":   "#3D3320",
-    "accent_ink":    "#D5B893",
-    "warm":          "#FFB37E",
-    "warm_soft":     "#3A2A1E",
-    "grid":          "#2D3150",
+    "bg":            "#0C0D10",
+    "bg_elev":       "#141519",
+    "card":          "#141519",
+    "border":        "#25272D",
+    "border_strong": "#34373F",
+    "ink":           "#F2F3F5",
+    "ink_soft":      "#B4B7BF",
+    "muted":         "#7C808A",
+    "accent":        "#4FD1C5",
+    "accent_soft":   "#16302F",
+    "accent_ink":    "#7FE3D9",
+    "warm":          "#F0A868",
+    "warm_soft":     "#31220F",
+    "grid":          "#1E2026",
     "danger":        "#E5484D",
-    "shadow":        "0 2px 14px rgba(0,0,0,.35)",
-    "shadow_lift":   "0 8px 28px rgba(0,0,0,.5)",
+    "shadow":        "0 1px 2px rgba(0,0,0,.5),0 8px 24px -12px rgba(0,0,0,.7)",
+    "shadow_lift":   "0 2px 4px rgba(0,0,0,.5),0 16px 40px -16px rgba(0,0,0,.8)",
 }
 
 TYPE: dict = {
