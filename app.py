@@ -26,7 +26,7 @@ from dsp.equalizer_spec import EqualizerSpec, all_specs, save_spec
 from perception.eq_app_reader import read_equalizer_screenshot
 from perception.context_classifier import classify, Context
 from perception.synth_scenarios import synth_scenario, SCENARIOS as SCENARIO_LABELS, SCENARIO_CONTENT_TYPE
-from perception.live_capture import record_ambient, is_available as mic_is_available, MicUnavailableError
+from perception.live_capture import decode_browser_audio, MicUnavailableError
 from perception import genre_classifier
 from perception import noise_classifier
 from data.db import ProfileStore
@@ -432,19 +432,18 @@ with col_left:
         )
 
         realtime_content_hint = "music"
+        realtime_audio = None
         if scenario_key == REALTIME_KEY:
             realtime_content_hint = st.selectbox(
                 "What's playing? (real-time mode has no separate content feed,"
                 " so tell it what to expect)",
                 ["podcast", "music", "movie"], index=1,
             )
-            if not mic_is_available():
-                st.caption("⚠️ No microphone detected on this machine/browser session — "
-                           "Run adaptation will show a friendly error instead of capturing audio.")
-            else:
-                st.caption("Clicking Run adaptation will record 10 seconds from your "
-                           "default microphone -- speak, play music, or just let the "
-                           "room's ambient noise through.")
+            st.caption("Record a clip below -- speak, play music, or just let the "
+                       "room's ambient noise through -- then click Run adaptation. "
+                       "Recording happens in your browser, so this works even on a "
+                       "deployed server with no microphone of its own.")
+            realtime_audio = st.audio_input("🎙️ Record ambient audio", key="realtime_mic_input")
 
             youtube_url = st.text_input(
                 "▶ Test with a YouTube video (optional)",
@@ -514,13 +513,18 @@ with col_right:
         mic_error = None
         content = None
         if scenario_key == REALTIME_KEY:
-            try:
-                with st.spinner("🎙️ Listening for 10 seconds…"):
-                    ambient = record_ambient(10.0, SR)
-                content_type_hint = realtime_content_hint
-            except MicUnavailableError as exc:
-                mic_error = str(exc)
+            if realtime_audio is None:
+                mic_error = ("No audio recorded yet -- click the microphone icon "
+                             "above, record a clip, then click Run adaptation again.")
                 ambient = None
+            else:
+                try:
+                    with st.spinner("Decoding your recording…"):
+                        ambient = decode_browser_audio(realtime_audio.getvalue(), SR)
+                    content_type_hint = realtime_content_hint
+                except MicUnavailableError as exc:
+                    mic_error = str(exc)
+                    ambient = None
         else:
             ambient, content = synth_scenario(scenario_key, SR)
             content_type_hint = SCENARIO_CONTENT_TYPE[scenario_key]
