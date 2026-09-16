@@ -8,7 +8,8 @@ Rule-based context blending is deterministic (auditable, no latency/cost),
 matching how a real-time DSP loop should behave. A typed free-text command
 ("make voices clearer", "less bass, this room is boomy") is the one place
 an LLM adds real value -- parsing intent into structured gain deltas -- so
-that step calls Claude and falls back to keyword rules if no API key is set.
+that step calls the configured LLM (Claude, or Groq when that's the only
+key available) and falls back to keyword rules if no API key is set.
 """
 from __future__ import annotations
 
@@ -50,7 +51,7 @@ def _rule_based_command_parse(command: str) -> dict:
 
 
 def _llm_command_parse(command: str, state: dict) -> tuple[dict, str]:
-    """Returns (deltas, source) where source is "claude" or "rules" -- the
+    """Returns (deltas, source) where source is "llm" or "rules" -- the
     dashboard shows that per run, so it's visible whether the LLM path or
     the keyword fallback produced the numbers."""
     system = (
@@ -72,12 +73,12 @@ def _llm_command_parse(command: str, state: dict) -> tuple[dict, str]:
             cleaned = cleaned[4:].strip()
         deltas = json.loads(cleaned)
         return {k: float(v) for k, v in deltas.items() if k in
-                 {"volume_db", "bass_gain_db", "presence_gain_db", "treble_gain_db"}}, "claude"
+                 {"volume_db", "bass_gain_db", "presence_gain_db", "treble_gain_db"}}, "llm"
     except Exception:
-        # Claude answered but not with usable JSON -- fall back to keywords
+        # The model answered but not with usable JSON -- fall back to keywords
         # and say so, rather than silently crediting the LLM for the result.
         call.status = "error"
-        call.error = "Claude's reply wasn't valid delta JSON; used keyword rules instead."
+        call.error = "The model's reply wasn't valid delta JSON; used keyword rules instead."
         return _rule_based_command_parse(command), "rules"
 
 

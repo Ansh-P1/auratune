@@ -31,6 +31,7 @@ from perception import genre_classifier
 from perception import noise_classifier
 from data.db import ProfileStore
 from agents.graph import run_pipeline
+from agents.llm_client import PROVIDER_LABELS
 from agents.spec_edit_parser import parse_spec_edit
 
 st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide")
@@ -676,8 +677,12 @@ with col_right:
 
             with st.container(border=True):
                 exp_source = result.get("explanation_source", "template")
-                badge = ("🤖 Written by Claude" if exp_source == "claude"
-                         else "📋 Written by the built-in template")
+                if exp_source == "llm":
+                    model = result.get("explanation_model", "an LLM")
+                    provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
+                    badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
+                else:
+                    badge = "📋 Written by the built-in template"
                 head, tag = st.columns([3, 2])
                 head.subheader("💬 Explanation")
                 tag.markdown(f"<div class='llm-badge'>{badge}</div>",
@@ -686,7 +691,7 @@ with col_right:
                 cmd_source = result.get("command_parse_source", "none")
                 if cmd_source != "none":
                     st.caption("Your typed command was parsed by "
-                               + ("**Claude**." if cmd_source == "claude"
+                               + ("**the LLM**." if cmd_source == "llm"
                                   else "**keyword rules** (no API key, or the call failed)."))
 
             with st.container(border=True):
@@ -707,17 +712,17 @@ with col_right:
                         st.json(step["detail"])
 
             llm_calls = [c for s in result.get("agent_trace", []) for c in s["llm_calls"]]
-            with st.expander("🔎 Claude prompts (dev view)"):
+            with st.expander("🔎 LLM prompts (dev view)"):
                 if not llm_calls:
-                    st.caption("No Claude call was attempted this run — the explainer "
+                    st.caption("No LLM call was attempted this run — the explainer "
                                "always tries one, so this is unexpected.")
                 for call in llm_calls:
-                    status = {"ok": "✅ Claude answered",
+                    status = {"ok": "✅ The model answered",
                               "no_api_key": "📋 No API key — deterministic fallback used",
                               "error": "⚠️ Call failed — deterministic fallback used"}.get(
                                   call["status"], call["status"])
                     st.markdown(f"**{call['purpose']}** — {status}"
-                                + (f" · `{call['model']}`" if call["model"] else "")
+                                + (f" · `{call['model']}` ({call['provider_label']})" if call["model"] else "")
                                 + (f" · {call['latency_ms']:.0f} ms"
                                    if call["latency_ms"] else ""))
                     if call["error"]:
