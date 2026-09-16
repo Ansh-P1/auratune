@@ -96,9 +96,13 @@ pip install -r requirements.txt
 ```
 
 Everything runs with **zero external services** out of the box:
-- No `ANTHROPIC_API_KEY`? The EQ Decision agent uses keyword-rule command
-  parsing, and the Explainer agent uses a templated sentence, instead of
-  calling Claude.
+- No `ANTHROPIC_API_KEY`? Set `GROQ_API_KEY` instead and those two steps run
+  on Groq's OpenAI-compatible API (`openai/gpt-oss-120b` by default);
+  Anthropic wins when both are set. With neither, the EQ Decision agent uses
+  keyword-rule command parsing and the Explainer agent uses a templated
+  sentence. Either key can go in a local `.env` (gitignored) instead of your
+  shell — see `config.py`. Which one actually ran is shown per run in the
+  dashboard's explanation badge and Agent trace (`docs/agent_pipeline.md`).
 - No `MONGO_URI` (or Mongo unreachable)? The profile store falls back to a
   local JSON file (`data/profiles.local.json`).
 - No network access to Meta's model hub for Demucs weights? Stem separation
@@ -108,6 +112,7 @@ Set these to unlock the full pipeline:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # free-text commands + natural explanations (+ EQ-screenshot reading)
+export GROQ_API_KEY=gsk_...           # same two features, if you don't have an Anthropic key
 export GEMINI_API_KEY=AIza...         # EQ-screenshot reading, free tier (aistudio.google.com/apikey)
 export MONGO_URI=mongodb+srv://...    # persistent, shared profile storage
 ```

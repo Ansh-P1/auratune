@@ -2,9 +2,9 @@
 Tests for the agent trace + LLM-source reporting (agents/trace.py,
 agents/llm_client.py).
 
-These run with no ANTHROPIC_API_KEY, which is the interesting case for CI:
-every Claude call must be recorded as an attempted-but-fell-back call, and
-the pipeline must still produce a full six-step trace.
+These run with no provider key set, which is the interesting case for CI:
+every LLM call must be recorded as an attempted-but-fell-back call, and the
+pipeline must still produce a full six-step trace.
 """
 import os
 import sys
@@ -13,12 +13,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# The whole point is the no-key path -- make sure a developer's real key in
-# the environment can't silently turn these into live API calls.
-os.environ.pop("ANTHROPIC_API_KEY", None)
+# The whole point is the no-key path -- make sure a developer's real key
+# (in the environment or in a local .env, which config.py loads) can't
+# silently turn these into live, billable API calls. Empty beats unset:
+# config's .env loader only fills in keys that aren't already present.
+os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["GROQ_API_KEY"] = ""
 
 from agents.graph import run_pipeline
-from agents.llm_client import LLMCall, redact
+from agents.llm_client import LLMCall, active_provider, redact
 from agents.trace import NODE_LABELS, traced
 from data.db import ProfileStore
 from dsp.parametric_eq import ParametricEQ
@@ -87,16 +90,36 @@ def test_traced_passes_the_node_result_through_untouched():
 
 
 def test_api_keys_are_redacted_from_the_dev_view():
-    leaked = "sk-ant-api03-AAAA1111bbbb_cccc-DDDD"
-    call = LLMCall(purpose="command_parse", status="error",
-                   system_prompt="be brief",
-                   user_prompt=f"my key is {leaked} please",
-                   error=f"401 from {leaked}")
-    shown = call.to_dict()
-    assert leaked not in shown["user_prompt"]
-    assert leaked not in shown["error"]
-    assert "***REDACTED***" in shown["user_prompt"]
+    for leaked in ("sk-ant-api03-AAAA1111bbbb_cccc-DDDD", "gsk_AAAA1111bbbbCCCC2222"):
+        call = LLMCall(purpose="command_parse", status="error",
+                       system_prompt="be brief",
+                       user_prompt=f"my key is {leaked} please",
+                       error=f"401 from {leaked}")
+        shown = call.to_dict()
+        assert leaked not in shown["user_prompt"], leaked
+        assert leaked not in shown["error"], leaked
+        assert "***REDACTED-API-KEY***" in shown["user_prompt"]
     assert redact(None) is None
+
+
+def test_provider_selection_prefers_anthropic_then_groq():
+    saved = (os.environ.get("ANTHROPIC_API_KEY"), os.environ.get("GROQ_API_KEY"))
+    try:
+        os.environ["ANTHROPIC_API_KEY"] = ""
+        os.environ["GROQ_API_KEY"] = ""
+        assert active_provider()[0] == "none"
+
+        os.environ["GROQ_API_KEY"] = "gsk_testkey"
+        provider, key, model = active_provider()
+        assert (provider, key) == ("groq", "gsk_testkey")
+        assert model, "a Groq model name must be configured"
+
+        # Anthropic wins when both are present -- it's the project's default.
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-testkey"
+        assert active_provider()[0] == "anthropic"
+    finally:
+        os.environ["ANTHROPIC_API_KEY"] = saved[0] or ""
+        os.environ["GROQ_API_KEY"] = saved[1] or ""
 
 
 if __name__ == "__main__":
@@ -106,4 +129,5 @@ if __name__ == "__main__":
     test_skipped_nodes_are_marked_skipped()
     test_traced_passes_the_node_result_through_untouched()
     test_api_keys_are_redacted_from_the_dev_view()
+    test_provider_selection_prefers_anthropic_then_groq()
     print("All agent trace tests passed.")
