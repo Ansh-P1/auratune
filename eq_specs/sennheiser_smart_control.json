@@ -1,0 +1,11 @@
+{
+  "name": "Sennheiser Smart Control (5-band)",
+  "band_freqs_hz": [63, 250, 1000, 4000, 8000],
+  "gain_min_db": -6.0,
+  "gain_max_db": 6.0,
+  "step_db": 0.1,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Sennheiser Smart Control companion app 5-band equalizer (Momentum 4 Wireless, Momentum True Wireless 3/4, Accentum). 5 frequency bands at 63 Hz, 250 Hz, 1 kHz, 4 kHz, 8 kHz with +/-6 dB range and 0.1 dB step granularity."
+}

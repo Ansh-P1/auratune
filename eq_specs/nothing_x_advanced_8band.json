@@ -1,0 +1,11 @@
+{
+  "name": "Nothing X Advanced Equaliser (8-band)",
+  "band_freqs_hz": [60, 150, 300, 700, 2000, 4500, 9000, 16000],
+  "gain_min_db": -6.0,
+  "gain_max_db": 6.0,
+  "step_db": 0,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "Nothing X app's 'Advanced Equaliser' for Nothing Ear / Ear (2) / Ear (3) / Headphone (1). The real app is more flexible than this spec can capture: each of its 8 bands has an independently adjustable centre frequency (within a fixed allowed range per band, per reverse-engineered profile data at github.com/charlieRub/nothing-x-eq-toolkit) plus a Q factor -- not just a fixed-frequency gain slider. The frequencies here are the midpoint of each band's disclosed allowed range: [20-100, 100-200, 200-400, 400-1000, 1000-3000, 3000-6000, 6000-12000, 12000-20000] Hz. Gain is stored as a continuous float with no publicly disclosed min/max; modeled here as continuous within an assumed +/-6 dB span."
+}

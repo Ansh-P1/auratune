@@ -24,7 +24,13 @@ import numpy as np
 try:
     import sounddevice as sd
     _HAS_SOUNDDEVICE = True
-except ImportError:
+except (ImportError, OSError):
+    # ImportError: the package itself isn't installed.
+    # OSError: the package imports fine but its native PortAudio library
+    # isn't present -- exactly what happens on Streamlit Community Cloud's
+    # containers, which have no audio hardware/subsystem at all. Either way
+    # this module should degrade to "no mic available", not crash the app
+    # that imports it.
     _HAS_SOUNDDEVICE = False
 
 
@@ -71,6 +77,42 @@ def record_ambient(duration_sec: float = 2.0, sr: int = 44100) -> np.ndarray:
 
     audio = recording.reshape(-1).astype(np.float32)
     return np.clip(audio, -1.0, 1.0)
+
+
+def decode_browser_audio(audio_bytes: bytes, target_sr: int = 44100) -> np.ndarray:
+    """Decode a browser-recorded clip (e.g. from Streamlit's `st.audio_input`)
+    into the same flat float32 [-1, 1] array `record_ambient` produces, so
+    downstream code (context_classifier, noise_classifier, the agent
+    pipeline) doesn't care whether the mic came from server-side sounddevice
+    or the user's own browser.
+
+    This is what makes real-time mode work on a deployed app with no audio
+    hardware of its own (e.g. Streamlit Community Cloud): the *server* can't
+    record, but the *browser* can -- it records locally and ships the
+    encoded bytes here to decode.
+    """
+    import io
+
+    try:
+        import soundfile as sf
+    except ImportError as exc:
+        raise MicUnavailableError(
+            "soundfile is not installed. Install it with `pip install "
+            "soundfile` to decode browser-recorded audio."
+        ) from exc
+
+    try:
+        audio, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32", always_2d=True)
+    except Exception as exc:
+        raise MicUnavailableError(f"Couldn't decode the recorded audio: {exc}") from exc
+
+    mono = audio.mean(axis=1)
+
+    if sr != target_sr:
+        import librosa
+        mono = librosa.resample(mono, orig_sr=sr, target_sr=target_sr)
+
+    return np.clip(mono.astype(np.float32), -1.0, 1.0)
 
 
 def is_available() -> bool:

@@ -1,0 +1,11 @@
+{
+  "name": "OnePlus Buds (HeyMelody app, 5-band)",
+  "band_freqs_hz": [31, 150, 700, 3400, 16000],
+  "gain_min_db": -6.0,
+  "gain_max_db": 6.0,
+  "step_db": 0.5,
+  "has_preamp": false,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "notes": "HeyMelody app's 5-band custom EQ for OnePlus/Oppo TWS earbuds that support it (e.g. Buds Pro 2/3 series). Publicly confirmed: 5 bands spanning ~31 Hz-16 kHz. NOT publicly confirmed: the exact center frequency of each band, or the gain range/step -- those aren't disclosed anywhere public. Frequencies here are a standard logarithmic spacing across the confirmed range (not read from the app itself); gain range/step are a typical consumer-TWS assumption (+/-6 dB, 0.5 dB). Correct via the manual editor if you have the device and it differs."
+}

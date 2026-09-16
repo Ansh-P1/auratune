@@ -8,13 +8,27 @@ __pycache__/
 venv/
 .venv/
 env/
+.env
 
 # Runtime data (regenerated automatically -- see data/db.py)
 data/profiles.local.json
 validation/output/validation_profiles.json
+
+# ML dataset + trained model artifacts -- regeneratable, not committed
+# (20MB CSV download + tens of MB of model files). Run `python ml/train.py`
+# after fetching the dataset per ml/README.md to regenerate locally.
+ml/data/
+ml/models/
+.ipynb_checkpoints/
+
+# Task hand-off zips for teammates -- local scaffolding only.
+handoff_zips/
 
 # OS / editor cruft
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated deliverable docs -- regenerate from the source artifact, not committed
+deliverables.pdf
