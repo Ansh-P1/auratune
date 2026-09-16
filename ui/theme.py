@@ -348,14 +348,26 @@ hr{border-color:var(--at-border)!important;}
 
 
 def inject(dark: bool | None = None) -> None:
-    """Call once, right after st.set_page_config."""
+    """Call once, right after st.set_page_config.
+
+    Two separate st.markdown(..., unsafe_allow_html=True) calls, not one
+    st.html() call with everything concatenated -- confirmed by hand in a
+    live browser that the combined payload is unreliable both ways:
+    st.html() sometimes dropped the whole thing (no <link>, no <style>,
+    no error, no console message -- flaky across otherwise-identical
+    reruns), and st.markdown() rendered the Google Fonts <link> tags
+    immediately followed by a large <style> block as visible garbled text
+    instead of applying it, because CommonMark's raw-HTML-block detection
+    doesn't reliably recognize multiple different-tag siblings glued
+    together as one HTML block. A <style> block starting a string on its
+    own is unambiguous and st.markdown renders it invisibly every time --
+    same for the <link> tags in their own call.
+    """
     if dark is None:
         dark = is_dark()
 
-    st.html(
-        _FONTS
-        + "<style>"
-        + _vars(tokens(dark))
-        + _CSS
-        + "</style>"
+    st.markdown(_FONTS, unsafe_allow_html=True)
+    st.markdown(
+        "<style>" + _vars(tokens(dark)) + _CSS + "</style>",
+        unsafe_allow_html=True,
     )
