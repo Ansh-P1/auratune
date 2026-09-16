@@ -5,44 +5,47 @@ Nothing else in the app should hard-code a hex value; import tokens() instead.
 from __future__ import annotations
 import streamlit as st
 
+## Palette is Mitaali's (Track 4 cold-start/theme pass) -- warm paper +
+## maroon/tan accent -- mapped onto this token schema so Falak's component
+## system (theme.py/components.py/charts.py) drives every color from it.
 LIGHT: dict = {
-    "bg":            "#FAFAF8",
-    "bg_elev":       "#FFFFFF",
-    "card":          "#FFFFFF",
-    "border":        "#E6E4DF",
-    "border_strong": "#D4D1C9",
-    "ink":           "#16171A",
-    "ink_soft":      "#54565C",
-    "muted":         "#5C6069",
-    "accent":        "#0B7C8C",
-    "accent_soft":   "#E3F4F6",
-    "accent_ink":    "#065561",
-    "warm":          "#B4632A",
-    "warm_soft":     "#FBEDE2",
-    "grid":          "#EDEBE6",
+    "bg":            "#F5EFE1",
+    "bg_elev":       "#FFFCF6",
+    "card":          "#FFFCF6",
+    "border":        "#E8DFC9",
+    "border_strong": "#D8C9A0",
+    "ink":           "#3A3428",
+    "ink_soft":      "#55503F",
+    "muted":         "#8C8370",
+    "accent":        "#743014",
+    "accent_soft":   "#F2DFDA",
+    "accent_ink":    "#743014",
+    "warm":          "#E8925A",
+    "warm_soft":     "#F3E4D3",
+    "grid":          "#EFE7D4",
     "danger":        "#C4453A",
-    "shadow":        "0 1px 2px rgba(16,17,26,.04),0 8px 24px -12px rgba(16,17,26,.10)",
-    "shadow_lift":   "0 2px 4px rgba(16,17,26,.06),0 16px 40px -16px rgba(16,17,26,.18)",
+    "shadow":        "0 2px 10px rgba(45,49,66,.04)",
+    "shadow_lift":   "0 6px 20px rgba(45,49,66,.10)",
 }
 
 DARK: dict = {
-    "bg":            "#0C0D10",
-    "bg_elev":       "#141519",
-    "card":          "#141519",
-    "border":        "#25272D",
-    "border_strong": "#34373F",
-    "ink":           "#F2F3F5",
-    "ink_soft":      "#B4B7BF",
-    "muted":         "#7C808A",
-    "accent":        "#4FD1C5",
-    "accent_soft":   "#16302F",
-    "accent_ink":    "#7FE3D9",
-    "warm":          "#F0A868",
-    "warm_soft":     "#31220F",
-    "grid":          "#1E2026",
+    "bg":            "#12141F",
+    "bg_elev":       "#1B1E30",
+    "card":          "#1B1E30",
+    "border":        "#2D3150",
+    "border_strong": "#3D4166",
+    "ink":           "#E7E9F5",
+    "ink_soft":      "#D5D8F0",
+    "muted":         "#C5CAE9",
+    "accent":        "#D5B893",
+    "accent_soft":   "#3D3320",
+    "accent_ink":    "#D5B893",
+    "warm":          "#FFB37E",
+    "warm_soft":     "#3A2A1E",
+    "grid":          "#2D3150",
     "danger":        "#E5484D",
-    "shadow":        "0 1px 2px rgba(0,0,0,.5),0 8px 24px -12px rgba(0,0,0,.7)",
-    "shadow_lift":   "0 2px 4px rgba(0,0,0,.5),0 16px 40px -16px rgba(0,0,0,.8)",
+    "shadow":        "0 2px 14px rgba(0,0,0,.35)",
+    "shadow_lift":   "0 8px 28px rgba(0,0,0,.5)",
 }
 
 TYPE: dict = {
@@ -65,7 +68,11 @@ def is_dark() -> bool:
 
 
 def _vars(t: dict) -> str:
-    lines = [f"  --at-{k}: {v};" for k, v in t.items()
+    # CSS custom properties are punctuation-exact -- every reference in _CSS
+    # below uses hyphens (var(--at-border-strong)), so definitions must too,
+    # not the raw underscored Python dict key (--at-border_strong), or the
+    # variable silently never resolves.
+    lines = [f"  --at-{k.replace('_', '-')}: {v};" for k, v in t.items()
              if k not in ("shadow", "shadow_lift")]
     lines.append(f"  --at-shadow: {t['shadow']};")
     lines.append(f"  --at-shadow-lift: {t['shadow_lift']};")
@@ -218,6 +225,12 @@ div.stButton>button[kind="primary"]:active{transform:translateY(0) scale(.99);}
   border-color:var(--at-accent)!important;
   box-shadow:0 0 0 3px color-mix(in srgb,var(--at-accent) 16%,transparent)!important;
 }
+/* Browsers dim placeholder text by default (often ~50% opacity), which on
+   top of an already-muted colour made it too faint to read against the
+   card background. */
+.stTextInput input::placeholder,.stNumberInput input::placeholder{
+  color:var(--at-muted)!important;opacity:1!important;
+}
 [data-testid="stWidgetLabel"] p{
   color:var(--at-ink)!important;font-size:var(--at-fs-small)!important;font-weight:550!important;
 }
@@ -225,6 +238,19 @@ div.stButton>button[kind="primary"]:active{transform:translateY(0) scale(.99);}
   background:var(--at-card)!important;color:var(--at-ink)!important;
 }
 [data-baseweb="popover"] li:hover{background:var(--at-accent-soft)!important;}
+/* Newer Streamlit's selectbox is a react-aria ComboBox with no
+   [data-baseweb] attributes at all, so the rules above match nothing there
+   -- kept for older Streamlit builds, and targeted by role here too, which
+   is stable across versions. The open dropdown list renders in a portal
+   appended to <body>, not inside the app tree, so it's selected
+   structurally by its listbox child. */
+[data-testid="stSelectbox"] input[role="combobox"]{color:var(--at-ink)!important;}
+[data-testid="stSelectbox"] [role="group"]{
+  background:var(--at-card)!important;border-color:var(--at-border)!important;
+}
+body div:has(> [role="listbox"]){background:var(--at-card)!important;border:1px solid var(--at-border)!important;}
+[role="option"]{background:transparent!important;color:var(--at-ink)!important;}
+[role="option"]:hover,[role="option"][data-hovered="true"]{background:var(--at-accent-soft)!important;}
 
 /* tabs */
 [data-baseweb="tab-list"]{gap:.2rem;border-bottom:1px solid var(--at-border);}
@@ -306,6 +332,10 @@ div.stButton>button[kind="primary"]:active{transform:translateY(0) scale(.99);}
 /* device badge */
 .at-device{display:flex;align-items:center;gap:.65rem;padding:.35rem 0;}
 .at-device .lbl{font-size:var(--at-fs-small);color:var(--at-muted);}
+
+/* agent trace rows */
+.trace-meta{color:var(--at-muted);font-size:var(--at-fs-small);}
+.trace-summary{color:var(--at-ink);font-size:var(--at-fs-body);}
 
 /* misc */
 [data-testid="stToggle"] label p{color:var(--at-ink-soft)!important;font-size:var(--at-fs-small)!important;}
