@@ -39,18 +39,27 @@ def _template_sentence(state: dict) -> str:
     if not bits:
         return f"No change needed -- your {ctx.content_type} curve already fits a {ctx.noise_level} room."
 
-    trigger = "your command" if state.get("user_command") else f"a {ctx.noise_level} environment"
+    # Only credit the command when it actually moved something. A command we
+    # couldn't parse (empty command_deltas) leaves changes that came from the
+    # room/ML rules -- attributing those to the user reads as if the app
+    # understood a request it silently dropped.
+    command_worked = state.get("user_command") and state.get("command_deltas")
+    trigger = "your command" if command_worked else f"a {ctx.noise_level} environment"
     return f"Because of {trigger} during {ctx.content_type}, I " + ", ".join(bits) + "."
 
 
 def _llm_sentence(state: dict) -> str:
     ctx = state["context"]
     deltas = state["eq"].delta(state["baseline_curve"], state["decided_curve"])
-    trigger = state.get("user_command") or f"{ctx.noise_level} ambient noise"
+    # Same rule as the template above: an unparsed command isn't the trigger.
+    trigger = (state["user_command"] if state.get("command_deltas")
+               else f"{ctx.noise_level} ambient noise")
     system = (
         "You explain an automatic audio-EQ adjustment to a non-technical user "
         "in exactly ONE short, friendly sentence. Mention the trigger and the "
-        "audible effect, not raw jargon. No preamble, no quotes."
+        "audible effect, not raw jargon. No preamble, no quotes. Describe ONLY "
+        "the adjustments in the deltas you are given: a delta of 0 means that "
+        "band did not change, so never mention it. Do not invent changes."
     )
     user = (
         f"Content type: {ctx.content_type}. Trigger: {trigger}. "
