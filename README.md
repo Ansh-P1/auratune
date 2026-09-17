@@ -180,6 +180,3 @@ DSP, LangGraph wiring, and UI run for real, no mocking.
 
 ---
 
-<p align="center">
-  <sub>Built for the architecture in <code>Grp_186__PPT.pptx</code> · Feedback & issues → <a href="https://github.com/anomalyco/opencode">opencode</a></sub>
-</p>
