@@ -24,7 +24,9 @@ DEFAULT_PROFILE_TEMPLATE: Dict[str, Any] = {
         "movie":   {"volume_db": 0, "bass_gain_db": 1,  "presence_gain_db": 2, "treble_gain_db": 0},
     },
     "history": [],
+    "feedback": [],
 }
+
 
 
 class ProfileStore:
@@ -92,3 +94,40 @@ class ProfileStore:
     def get_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         profile = self.get_profile(user_id)
         return profile.get("history", [])[-limit:]
+
+    def log_feedback(
+        self,
+        user_id: str,
+        context_bucket: str,
+        agent_curve: Dict[str, Any],
+        user_correction_delta: Dict[str, Any],
+    ) -> None:
+        """Store a feedback event: what the agent decided, what the user corrected it to,
+        and the context bucket under which it happened."""
+        entry = {
+            "ts": time.time(),
+            "context_bucket": context_bucket,
+            "agent_curve": agent_curve,
+            "user_correction_delta": user_correction_delta,
+        }
+        if self.backend == "mongodb":
+            self._collection.update_one({"_id": user_id}, {"$push": {"feedback": entry}}, upsert=True)
+            return
+        data = self._read_local()
+        data.setdefault(user_id, json.loads(json.dumps(DEFAULT_PROFILE_TEMPLATE)))
+        data[user_id].setdefault("feedback", []).append(entry)
+        self._write_local(data)
+
+    def get_feedback(
+        self,
+        user_id: str,
+        context_bucket: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve feedback events for a user, optionally filtered by context bucket."""
+        profile = self.get_profile(user_id)
+        entries = profile.get("feedback", [])
+        if context_bucket is not None:
+            entries = [e for e in entries if e.get("context_bucket") == context_bucket]
+        return entries[-limit:]
+
