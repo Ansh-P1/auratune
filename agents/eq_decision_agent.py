@@ -23,6 +23,8 @@ from dsp.noise_curves import NOISE_CURVES, NOISE_BLEND_WEIGHT
 from agents.llm_client import complete_with_meta
 from agents.trace import record_llm_call
 from config import MAX_GAIN_DB
+from learning.preference_model import PreferenceModel
+
 
 _NOISE_ADJUSTMENTS = {
     # noise_level -> (presence_delta, bass_delta) applied on top of baseline
@@ -148,6 +150,24 @@ def run_eq_decision_agent(state: dict) -> dict:
         for key, delta in command_deltas.items():
             setattr(decided, key, getattr(decided, key) + delta)
 
+    # Personalization / Preference Learning (learning/preference_model.py):
+    # Fetch learned bias from past user corrections for this context bucket.
+    user_id = state.get("user_id", "default")
+    pref_model = state.get("preference_model")
+    if pref_model is None:
+        store = state.get("profile_store")
+        pref_model = PreferenceModel(store=store)
+
+    context_bucket = f"{context.noise_level}_{context.content_type}"
+    pref_deltas, pref_conf = pref_model.get_bias(user_id=user_id, context_bucket=context_bucket)
+    # Fallback to general noise bucket if compound bucket has no feedback
+    if pref_conf == 0.0:
+        pref_deltas, pref_conf = pref_model.get_bias(user_id=user_id, context_bucket=context.noise_level)
+
+    for key, delta in pref_deltas.items():
+        if delta != 0.0 and hasattr(decided, key):
+            setattr(decided, key, getattr(decided, key) + delta)
+
     # keep total gains within a sane, ear-safe range
     for field_name in ("volume_db", "bass_gain_db", "presence_gain_db", "treble_gain_db"):
         val = getattr(decided, field_name)
@@ -159,4 +179,7 @@ def run_eq_decision_agent(state: dict) -> dict:
     state["context_deltas"] = {"presence_gain_db": presence_delta, "bass_gain_db": bass_delta}
     state["genre_deltas"] = genre_deltas
     state["noise_deltas"] = noise_deltas
+    state["preference_deltas"] = pref_deltas
+    state["preference_confidence"] = pref_conf
     return state
+

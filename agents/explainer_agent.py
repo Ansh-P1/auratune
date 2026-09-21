@@ -101,6 +101,26 @@ def _noise_clause(state: dict) -> str:
             f"local {model} model).")
 
 
+def _preference_clause(state: dict) -> str:
+    """One extra clause naming personalized adjustments learned from the user's past corrections."""
+    pref_deltas = state.get("preference_deltas") or {}
+    confidence = state.get("preference_confidence", 0.0)
+    if confidence <= 0.0 or not any(abs(v) >= 0.1 for v in pref_deltas.values()):
+        return ""
+    bits = []
+    if abs(pref_deltas.get("bass_gain_db", 0.0)) >= 0.1:
+        bits.append(f"{pref_deltas['bass_gain_db']:+.1f} dB bass")
+    if abs(pref_deltas.get("presence_gain_db", 0.0)) >= 0.1:
+        bits.append(f"{pref_deltas['presence_gain_db']:+.1f} dB vocals")
+    if abs(pref_deltas.get("treble_gain_db", 0.0)) >= 0.1:
+        bits.append(f"{pref_deltas['treble_gain_db']:+.1f} dB treble")
+    if abs(pref_deltas.get("volume_db", 0.0)) >= 0.1:
+        bits.append(f"{pref_deltas['volume_db']:+.1f} dB volume")
+    if not bits:
+        return ""
+    return f" Nudged {', '.join(bits)} based on your past preferences."
+
+
 def _projection_clause(state: dict) -> str:
     """One extra sentence naming the actual slider moves for the user's EQ app."""
     proj = state.get("projected_eq")
@@ -145,5 +165,6 @@ def run_explainer_agent(state: dict, eq: ParametricEQ) -> dict:
         state["explanation_model"] = last_call.model
     if not sentence:
         sentence = _template_sentence(state)
-    state["explanation"] = sentence + _noise_clause(state) + _genre_clause(state) + _projection_clause(state)
+    state["explanation"] = sentence + _noise_clause(state) + _genre_clause(state) + _preference_clause(state) + _projection_clause(state)
     return state
+
