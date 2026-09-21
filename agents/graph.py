@@ -62,6 +62,11 @@ class PipelineState(TypedDict, total=False):
     explanation_source: str      # "llm" | "template"
     explanation_provider: str    # "anthropic" | "groq"
     explanation_model: str
+    preference_deltas: dict
+    preference_confidence: float
+    profile_store: Any
+    preference_model: Any
+
 
 
 def build_graph(store: ProfileStore, eq: ParametricEQ,
@@ -124,9 +129,11 @@ def run_pipeline(
         "context": context,
         "user_command": user_command,
         "equalizer_spec": equalizer_spec,
+        "profile_store": store,
         "agent_trace": [],
         "llm_calls": [],
     })
+
     # persist the decided curve + a history entry
     content_type = context.content_type
     profile_update: dict = {
