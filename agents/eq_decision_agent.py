@@ -33,8 +33,18 @@ _NOISE_ADJUSTMENTS = {
     "noisy": (3.5, -2.5),   # boost vocal/presence band, pull bass back to avoid mud/stacking
 }
 
+# Matched against the raw typed command when no LLM is available. Patterns
+# are deliberately tolerant of plurals and word order: the phrasing the
+# README and the UI placeholder both suggest -- "make voices clearer" --
+# used to match nothing here, so on the deployed site (no API key) the app's
+# own example command was silently a no-op.
+_VOCAL_WORDS = r"voices?|vocals?|dialogue|speech"
+_CLARITY_WORDS = r"clear(?:er|ly)?|clarity|crisper|intelligible"
+
 _COMMAND_KEYWORDS = [
-    (re.compile(r"clear(er)? voice|dialogue|speech", re.I), {"presence_gain_db": 3.0}),
+    (re.compile(rf"(?:{_CLARITY_WORDS})\W+(?:\w+\W+){{0,2}}(?:{_VOCAL_WORDS})"
+                rf"|(?:{_VOCAL_WORDS})\W+(?:\w+\W+){{0,2}}(?:{_CLARITY_WORDS})"
+                rf"|dialogue|speech", re.I), {"presence_gain_db": 3.0}),
     (re.compile(r"less bass|too boomy|reduce bass", re.I), {"bass_gain_db": -3.0}),
     (re.compile(r"more bass|bassier|boomier", re.I), {"bass_gain_db": 3.0}),
     (re.compile(r"brighter|more treble|crisper", re.I), {"treble_gain_db": 2.0}),

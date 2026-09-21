@@ -52,5 +52,8 @@ jobs:
       - name: Test agent trace
         run: python tests/test_agent_trace.py
 
+      - name: Test command fallback
+        run: python tests/test_command_fallback.py
+
       - name: Test Track 5 Matrix
         run: python tests/test_track5_matrix.py
