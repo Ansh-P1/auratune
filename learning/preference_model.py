@@ -164,3 +164,68 @@ class PreferenceModel:
         adj_str = ", ".join(parts)
         ctx_clause = f" for {context_bucket}" if context_bucket else ""
         return f"nudged {adj_str} based on your past preferences{ctx_clause}"
+
+    @staticmethod
+    def diff_curves(
+        old_curve: TargetCurve | Dict[str, Any],
+        new_curve: TargetCurve | Dict[str, Any],
+    ) -> Dict[str, float]:
+        """Convenience helper for teammates (e.g. Live Mode UI / Live Loop):
+        Given an initial agent curve and a user's adjusted curve, compute the
+        user correction delta dictionary."""
+        deltas: Dict[str, float] = {}
+        for field in EQ_FIELDS:
+            old_val = (
+                getattr(old_curve, field)
+                if isinstance(old_curve, TargetCurve)
+                else float(old_curve.get(field, 0.0))
+            )
+            new_val = (
+                getattr(new_curve, field)
+                if isinstance(new_curve, TargetCurve)
+                else float(new_curve.get(field, 0.0))
+            )
+            delta = round(new_val - old_val, 2)
+            if abs(delta) >= 0.05:
+                deltas[field] = delta
+        return deltas
+
+    def get_learning_summary(self, user_id: str) -> Dict[str, Any]:
+        """Returns a high-level summary of learned preferences for dashboard display."""
+        all_feedback = self.store.get_feedback(user_id=user_id, limit=200)
+        if not all_feedback:
+            return {
+                "total_feedback_events": 0,
+                "active_buckets": [],
+                "learned_preferences": {},
+                "confidence_per_bucket": {},
+                "summary_text": "No personalized adjustments recorded yet.",
+            }
+
+        # Group feedback by context bucket
+        buckets: Dict[str, List[Dict[str, Any]]] = {}
+        for entry in all_feedback:
+            b = entry.get("context_bucket", "general")
+            buckets.setdefault(b, []).append(entry)
+
+        learned_prefs: Dict[str, Dict[str, float]] = {}
+        confidences: Dict[str, float] = {}
+        for b, entries in buckets.items():
+            bias, conf = self.compute_bias_from_feedback(entries)
+            learned_prefs[b] = bias
+            confidences[b] = conf
+
+        active_buckets = list(buckets.keys())
+        summary_text = (
+            f"Personalized: {len(all_feedback)} adjustments learned across "
+            f"{len(active_buckets)} environments ({', '.join(active_buckets)})."
+        )
+
+        return {
+            "total_feedback_events": len(all_feedback),
+            "active_buckets": active_buckets,
+            "learned_preferences": learned_prefs,
+            "confidence_per_bucket": confidences,
+            "summary_text": summary_text,
+        }
+

@@ -132,6 +132,32 @@ class TestPreferenceModel(unittest.TestCase):
         self.assertIn("-1.5 dB bass", clause)
         self.assertIn("past preferences", clause)
 
+    def test_diff_curves(self):
+        c1 = TargetCurve(name="c1", volume_db=0.0, bass_gain_db=2.0, presence_gain_db=1.0, treble_gain_db=0.0)
+        c2 = TargetCurve(name="c2", volume_db=0.0, bass_gain_db=0.5, presence_gain_db=1.0, treble_gain_db=1.5)
+        diff = PreferenceModel.diff_curves(c1, c2)
+        self.assertEqual(diff, {"bass_gain_db": -1.5, "treble_gain_db": 1.5})
+
+    def test_get_learning_summary(self):
+        store = _fresh_store()
+        model = PreferenceModel(store=store)
+
+        # Empty summary
+        summary_empty = model.get_learning_summary("user_empty")
+        self.assertEqual(summary_empty["total_feedback_events"], 0)
+        self.assertEqual(summary_empty["active_buckets"], [])
+
+        # Record 2 feedbacks in different buckets
+        model.record_feedback("user_sum", "noisy_cafe", {"bass_gain_db": 2.0}, {"bass_gain_db": -1.0})
+        model.record_feedback("user_sum", "quiet_room", {"treble_gain_db": 0.0}, {"treble_gain_db": 1.5})
+
+        summary = model.get_learning_summary("user_sum")
+        self.assertEqual(summary["total_feedback_events"], 2)
+        self.assertIn("noisy_cafe", summary["active_buckets"])
+        self.assertIn("quiet_room", summary["active_buckets"])
+        self.assertIn("Personalized: 2 adjustments", summary["summary_text"])
+
+
 
 class TestPreferencePipelineIntegration(unittest.TestCase):
     def test_pipeline_without_and_with_feedback(self):
