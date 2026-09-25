@@ -1,0 +1,12 @@
+{
+  "name": "Equalizer APO (Windows, system-wide, live)",
+  "band_freqs_hz": [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  "gain_min_db": -12.0,
+  "gain_max_db": 12.0,
+  "step_db": 0.1,
+  "has_preamp": true,
+  "preamp_min_db": -12.0,
+  "preamp_max_db": 0.0,
+  "live_target": "equalizer_apo",
+  "notes": "Not a phone app you type values into -- AuraTune writes Equalizer APO's config.txt directly and it re-reads the file within a moment, so the adaptation lands on whatever is playing, system-wide. Free/open source, Windows only: https://equalizerapo.com. Setup in docs/equalizer_apo_setup.md. 10 octave-spaced bands as parametric peaking filters, plus a real preamp so boosts can't clip."
+}

@@ -55,5 +55,8 @@ jobs:
       - name: Test command fallback
         run: python tests/test_command_fallback.py
 
+      - name: Test Equalizer APO integration
+        run: python tests/test_equalizer_apo.py
+
       - name: Test Track 5 Matrix
         run: python tests/test_track5_matrix.py
