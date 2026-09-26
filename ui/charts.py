@@ -55,15 +55,17 @@ def eq_curve(freqs_before, mag_before, freqs_after, mag_after,
 
     fig.add_hline(y=0, line=dict(color=t["border_strong"], width=1))
     fig.update_xaxes(type="log", title=None, gridcolor=t["grid"], zeroline=False,
-                     linecolor=t["border"], tickfont=dict(size=10),
+                     linecolor=t["border"], tickfont=dict(size=10, color=t["ink_soft"]),
                      ticksuffix=" Hz")
     fig.update_yaxes(title=None, gridcolor=t["grid"], zeroline=False,
-                     linecolor=t["border"], tickfont=dict(size=10),
+                     linecolor=t["border"], tickfont=dict(size=10, color=t["ink_soft"]),
                      ticksuffix=" dB")
     fig.update_layout(
         **_layout(t, height), hovermode="x unified",
         legend=dict(orientation="h", y=1.15, x=0,
-                    bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+                    bgcolor="rgba(0,0,0,0)",
+                    font=dict(size=11,
+                              color="#808495" if is_dark() else t["ink_soft"])),
     )
     st.plotly_chart(fig, use_container_width=True, config=CONFIG)
 

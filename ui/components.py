@@ -13,7 +13,6 @@ def hero(subtitle: str = "Reads your room, reads what's playing, and hands you "
                          "the exact slider values for the EQ app you already own.") -> None:
     st.markdown(
         f'<div class="at-hero">'
-        f'<span class="at-chip"><span class="at-dot"></span>Adaptive audio personalization</span>'
         f'<h1>Aura<span class="at-acc">Tune</span></h1>'
         f'<div class="at-sub">{_e(subtitle)}</div>'
         f'</div>',
