@@ -24,8 +24,8 @@
 | 🎬 **Knows the content** | Podcast / Music / Movie + genre/mood (8 buckets, 114k-track model) |
 | 🧠 **Decides** | LangGraph pipeline blends profile + context + your live command (`"less bass"`) into a target curve |
 | 🎚️ **Maps to YOUR EQ** | Snaps the ideal curve onto your actual app's sliders — upload a screenshot and it reads it |
-| 🔊 **Applies it live** | Equalizer APO integration writes system-wide EQ on Windows — adaptation is audible in seconds, no manual slider typing |
-| 🔄 **Keeps adapting** | Live Mode continuously monitors the room and auto-adjusts EQ as conditions change — smooth glide transitions, no button clicks |
+| 🔊 **Applies system-wide** | Equalizer APO integration writes Windows EQ directly (writer verified working; live auto-apply UI trigger in progress) |
+| 🔄 **Keeps adapting** | Live Mode dashboard tests debounce & smooth glide transitions (tested via sandbox runner; mic sensor wiring in progress) |
 | 💬 **Explains** | One sentence, no jargon — plus a full agent trace |
 
 ```
@@ -51,9 +51,9 @@ streamlit run app.py
 
 1. Pick a **Scenario** — `Quiet + Podcast` / `Noisy + Music` / `Home + Movie` or **🎙️ Real-time (10s mic capture)** for your actual room
 2. (optional) Type a command — *“make voices clearer”*, *“less bass, room is boomy”*
-3. Tell it **Your EQ app** — screenshot / preset / manual (or pick **Equalizer APO** to apply live)
+3. Tell it **Your EQ app** — screenshot / preset / manual (or pick **Equalizer APO** for system-wide config specs)
 4. Hit **▶ Run adaptation** → live vs stored curve + exact slider values + one-sentence *why*
-5. (optional) Switch to **Live Mode** (sidebar → *Live Mode*) — the room keeps being sampled, and EQ auto-adjusts with smooth glide transitions
+5. (optional) Switch to **Live Mode** (sidebar → *Live Mode*) — watch real-time room adaptation, debounce, and smooth curve transitions in action
 
 History panel on the left keeps every run.
 
@@ -68,7 +68,7 @@ Every EQ is a fixed grid (N bands, range, step). AuraTune samples the ideal curv
 | **📷 Screenshot** | Upload your EQ screen → Gemini (free tier) or Claude reads bands/step/range → you confirm |
 | **📦 Preset** | `wavelet_9band` · `iso_10band` · `spotify_5band` · `car_3band` · `equalizer_apo` + any `eq_specs/*.json` |
 | **✏️ Manual** | Type bands + range + step → *Save to eq_specs/* for next time |
-| **🔊 Live (Equalizer APO)** | Pick the APO preset → AuraTune writes system-wide EQ directly, no sliders to touch. Windows only. Setup → [`docs/equalizer_apo_setup.md`](docs/equalizer_apo_setup.md) |
+| **🔊 Equalizer APO** | Pick the APO preset → AuraTune formats & writes system-wide EQ configs (writer verified; UI live auto-apply hookup underway). Windows only. Setup → [`docs/equalizer_apo_setup.md`](docs/equalizer_apo_setup.md) |
 
 > Tip: Presets are starting points — edit range/step to match what your app *actually* shows (e.g. Wavelet preamp → −76.5 dB).
 
@@ -186,8 +186,8 @@ Built sandbox-first, so every integration is real with a documented fallback —
 - **MongoDB** — real `pymongo`, else transparent local JSON
 - **Genre ML** — 114k real tracks; 11/13 features estimated from signal via `librosa`, 2 pinned (see `ml/README.md`)
 - **Noise ML** — 2k ESC-50 clips; zero proxy gap — same `extract_noise_features()` in train & inference
-- **Equalizer APO** — real atomic config writes when installed (Windows); `AURATUNE_APO_CONFIG` lets the renderer/writer run anywhere for testing
-- **Live Mode** — real classification + agent pipeline per tick; continuous sensing and curve smoothing use stand-ins (`validation/live_mode_fakes.py`) until Parts 1 & 2 land
+- **Equalizer APO** — real atomic config writes when installed (Windows); `AURATUNE_APO_CONFIG` lets the renderer/writer run anywhere for testing (writer verified; auto-apply UI integration in progress)
+- **Live Mode** — real classification + agent pipeline per tick; continuous sensing (`LiveMonitor` merged in #23) and curve smoothing use stand-ins (`validation/live_mode_fakes.py`) until UI wiring lands
 
 DSP, LangGraph wiring, and UI run for real, no mocking.
 
