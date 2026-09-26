@@ -13,6 +13,7 @@ env/
 # Runtime data (regenerated automatically -- see data/db.py)
 data/profiles.local.json
 validation/output/validation_profiles.json
+validation/output/live_mode_eval_profiles.json
 
 # ML dataset + trained model artifacts -- regeneratable, not committed
 # (20MB CSV download + tens of MB of model files). Run `python ml/train.py`

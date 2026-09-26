@@ -60,3 +60,6 @@ jobs:
 
       - name: Test Track 5 Matrix
         run: python tests/test_track5_matrix.py
+
+      - name: Test Live Mode fakes (Part 5)
+        run: python tests/test_live_mode_fakes.py

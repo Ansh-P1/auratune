@@ -19,6 +19,7 @@ Run with: streamlit run app.py
 """
 from __future__ import annotations
 
+import html
 import json
 import os
 from pathlib import Path
@@ -42,15 +43,18 @@ from ui import theme
 from ui import components as c
 from ui import charts
 
-st.set_page_config(page_title="AuraTune", page_icon="🎧", layout="wide",
+st.set_page_config(page_title="AuraTune", layout="wide",
                    initial_sidebar_state="collapsed")
 
 SR = 44100
 USER_ID = "demo_user"
 REALTIME_KEY = "__realtime__"
 
-st.session_state.setdefault("dark_mode", True)
-DARK = st.session_state.dark_mode
+st.session_state.setdefault("dark_mode_enabled", st.session_state.get("dark_mode", True))
+st.session_state.setdefault("live_mode_enabled", False)
+st.session_state["dark_mode_main"] = st.session_state.dark_mode_enabled
+st.session_state["live_mode_main"] = st.session_state.live_mode_enabled
+DARK = st.session_state.dark_mode_enabled
 theme.inject(DARK)
 
 # ---------------------------------------------------------------------------
@@ -99,23 +103,6 @@ _GENRE_CHART_NAMES = {
     "pop": "Pop", "acoustic_folk": "Acoustic", "classical_jazz": "Classical",
     "chill_ambient": "Chill", "world_latin": "World",
 }
-
-# Generic device-type icons for "Your EQ app" (rendered via ui.components).
-# Never a real product photo or logo -- copyright/trademark risk for a
-# public repo + deployed site -- just hand-drawn line art keyed to the
-# *kind* of device a preset represents.
-_DEVICE_TYPES = {
-    "apple_music_10band": "earbuds",
-    "bose_music_app": "overear",
-    "google_pixel_buds_pro_5band": "earbuds",
-    "nothing_x_advanced_8band": "earbuds",
-    "oneplus_heymelody_5band": "earbuds",
-    "samsung_soundalive_9band": "earbuds",
-    "sennheiser_smart_control": "overear",
-    "sony_headphones_app": "overear",
-    "soundcore_app_8band": "overear",
-}
-
 
 def _model_label(name: str) -> str:
     return _MODEL_DISPLAY_NAMES.get(name, name)
@@ -199,7 +186,7 @@ def _read_screenshot_cached(image_bytes: bytes, media_type: str, gemini_key: str
             res.error, res.model_notes, res.backend)
 
 
-def _spec_editor(prefill: EqualizerSpec | None, key: str) -> EqualizerSpec | None:
+def _spec_editor(prefill: EqualizerSpec | None, key: str, show_save: bool = True) -> EqualizerSpec | None:
     """Editable band/step/range fields. Prefilled from `prefill` when given."""
     p = prefill
     name = st.text_input("Name", p.name if p else "My EQ", key=f"{key}_name")
@@ -251,10 +238,23 @@ def _spec_editor(prefill: EqualizerSpec | None, key: str) -> EqualizerSpec | Non
         has_preamp=bool(has_preamp),
         notes=(p.notes if p else "Built in the AuraTune manual editor."),
     )
-    if st.button("Save to eq_specs/ (reuse it later)", key=f"{key}_save", type="primary"):
+    if show_save and st.button("Save to eq_specs/ (reuse it later)", key=f"{key}_save", type="primary"):
         path = save_spec(_slugify(name), spec)
         st.success(f"Saved {path.name}. It'll be in the dropdown next time.")
     return spec
+
+
+@st.dialog("Edit values")
+def _edit_spec_dialog(prefill: EqualizerSpec, key: str) -> None:
+    st.caption("Presets are a starting point — your actual app may differ "
+              "(e.g. Wavelet's preamp can go down to −76.5 dB, not the "
+              "±12 dB shown above). Adjust the range, step, or bands to "
+              "match what your app really shows.")
+    edited = _spec_editor(prefill, key=key, show_save=False)
+    if st.button("Done", type="primary", key=f"{key}_done"):
+        if edited is not None:
+            st.session_state[f"{key}_result"] = edited
+        st.rerun()
 
 
 def eq_spec_picker() -> EqualizerSpec | None:
@@ -269,39 +269,44 @@ def eq_spec_picker() -> EqualizerSpec | None:
         format_func=lambda k: specs[k].name if k in specs else k,
     )
 
-    device_type = _DEVICE_TYPES.get(choice, "generic")
-    icon_l, icon_r = st.columns([1, 6])
-    with icon_l:
-        st.markdown(c.device_icon(device_type), unsafe_allow_html=True)
-    with icon_r:
-        label = {"earbuds": "Earbuds", "overear": "Over-ear headphones"}.get(
-            device_type, "Generic EQ app")
-        st.caption(f"_{label} (generic icon, not the actual product)_"
-                   if device_type != "generic" else f"_{label}_")
-
     if choice == "(none, just show the curve)":
         return None
 
     if choice in specs:
         spec = specs[choice]
-        st.caption(
-            f"{len(spec.band_freqs_hz)} bands · "
-            f"{spec.gain_min_db:+.0f}…{spec.gain_max_db:+.0f} dB · "
-            f"{spec.step_db or 'continuous'} dB step"
-            + ("" if not spec.has_preamp else " · has preamp")
-        )
-        if spec.notes:
-            st.caption(f"_{spec.notes}_")
-        with st.expander("✏️ Edit values (e.g. match your app's actual dB range)"):
-            st.caption("Presets are a starting point — your actual app may differ "
-                       "(e.g. Wavelet's preamp can go down to −76.5 dB, not the "
-                       "±12 dB shown above). Adjust the range, step, or bands to "
-                       "match what your app really shows, then optionally save it "
-                       "as its own preset below.")
-            edited = _spec_editor(spec, key=f"edit_{_slugify(choice)}")
-            if edited is not None:
-                spec = edited
-        return spec
+        edit_key = f"edit_{_slugify(choice)}"
+        effective_spec = st.session_state.get(f"{edit_key}_result")
+
+        if effective_spec is None:
+            # Not edited yet this session -- the compact default summary.
+            effective_spec = spec
+            st.caption(
+                f"{len(spec.band_freqs_hz)} bands · "
+                f"{spec.gain_min_db:+.0f}…{spec.gain_max_db:+.0f} dB · "
+                f"{spec.step_db or 'continuous'} dB step"
+                + ("" if not spec.has_preamp else " · has preamp")
+            )
+            if spec.notes:
+                st.caption(f"_{spec.notes}_")
+        else:
+            # Edited at least once -- recap every field the popup collected,
+            # then offer to save it, instead of the one-line summary.
+            st.markdown(f"**Name:** {effective_spec.name}")
+            st.markdown("**Band frequencies (Hz, comma-separated):** "
+                       + ", ".join(_num(f) for f in effective_spec.band_freqs_hz))
+            st.markdown(f"**Min dB:** {effective_spec.gain_min_db:.2f}")
+            st.markdown(f"**Max dB:** {effective_spec.gain_max_db:.2f}")
+            st.markdown(f"**Step dB (0 = continuous):** {effective_spec.step_db}")
+            st.markdown("**Has a separate preamp / gain slider:** "
+                       + ("Yes" if effective_spec.has_preamp else "No"))
+            if st.button("Save to eq_specs/ (reuse it later)", key=f"{edit_key}_save_after"):
+                path = save_spec(_slugify(effective_spec.name), effective_spec)
+                st.success(f"Saved {path.name}. It'll be in the dropdown next time.")
+
+        if st.button("Edit values (e.g. match your app's actual dB range)", key="edit_values_button", type="primary"):
+            _edit_spec_dialog(spec, edit_key)
+
+        return effective_spec
 
     if choice == "Manual…":
         return _spec_editor(None, key="manual")
@@ -347,12 +352,30 @@ def eq_spec_picker() -> EqualizerSpec | None:
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-hl, hr = st.columns([7, 1])
+def _open_live_mode() -> None:
+    st.session_state.live_mode_enabled = st.session_state.live_mode_main
+
+
+def _save_main_theme() -> None:
+    st.session_state.dark_mode_enabled = st.session_state.dark_mode_main
+
+
+hl, theme_col, live_col = st.columns([6, 1, 2.5])
 with hl:
     c.hero()
-with hr:
+with theme_col:
     st.write("")
-    st.toggle("🌙 Dark", key="dark_mode")
+    st.toggle("Dark", key="dark_mode_main", on_change=_save_main_theme)
+with live_col:
+    st.write("")
+    st.toggle("Live mode", key="live_mode_main", on_change=_open_live_mode)
+
+# st.switch_page()'s own rerun is a no-op from inside an on_change callback
+# (callbacks run before Streamlit's automatic rerun) -- so the toggle above
+# only ever updates session_state, and the actual navigation happens here,
+# in the main script body, on the rerun that follows.
+if st.session_state.live_mode_enabled:
+    st.switch_page("pages/3_Live_Mode.py")
 
 # ---------------------------------------------------------------------------
 # Layout -- side-by-side like the reference build (falaksharmafs/auratune):
@@ -360,9 +383,9 @@ with hr:
 # ---------------------------------------------------------------------------
 store = get_store()
 
-col_left, col_right = st.columns([1, 1.4], gap="medium")
+sub_l, sub_r = st.columns(2, gap="medium")
 
-with col_left:
+with sub_l:
     with st.container(border=True):
         c.eyebrow("Scenario")
         scenario_options = list(SCENARIO_LABELS.keys()) + [REALTIME_KEY]
@@ -385,7 +408,7 @@ with col_left:
                        "room's ambient noise through -- then click Run adaptation. "
                        "Recording happens in your browser, so this works even on a "
                        "deployed server with no microphone of its own.")
-            realtime_audio = st.audio_input("🎙️ Record ambient audio", key="realtime_mic_input")
+            realtime_audio = st.audio_input("Record ambient audio", key="realtime_mic_input")
 
             youtube_url = st.text_input(
                 "▶ Test with a YouTube video (optional)",
@@ -405,6 +428,7 @@ with col_left:
             placeholder="e.g. make voices clearer, less bass",
         )
 
+with sub_r:
     with st.container(border=True):
         t_eq, t_models = st.tabs(["Your EQ app", "ML models"])
 
@@ -412,7 +436,7 @@ with col_left:
             eq_spec = eq_spec_picker()
 
         with t_models:
-            with st.expander("📊 Model performance", expanded=False):
+            with st.expander("Model performance", expanded=False):
                 st.caption(
                     "Real held-out test-set numbers from the two locally-trained "
                     "classifiers, read straight from ml/models/*.json -- not just "
@@ -463,11 +487,8 @@ with col_left:
                 st.caption("Noise-type tuning isn't available in this deployment. "
                            "Your EQ still adapts based on overall noise level and content type.")
 
-        run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True)
-
-    with st.container(border=True):
-        c.eyebrow("History")
-        c.timeline(store.get_history(USER_ID, limit=8))
+        run_clicked = st.button("▶  Run adaptation", type="primary", use_container_width=True,
+                                key="run_adaptation")
 
 if run_clicked:
     mic_error = None
@@ -512,181 +533,178 @@ if run_clicked:
         st.session_state.pop("last_error", None)
     st.rerun()
 
-with col_right:
-    if st.session_state.get("last_error"):
-        st.error(f"Couldn't capture from the microphone: {st.session_state['last_error']}")
-    elif st.session_state.get("last_result"):
-        ctx = st.session_state["last_result"]["ctx"]
-        result = st.session_state["last_result"]["result"]
-        eq = get_eq()
-        proj = result.get("projected_eq")
+if st.session_state.get("last_error"):
+    st.error(f"Couldn't capture from the microphone: {st.session_state['last_error']}")
+elif st.session_state.get("last_result"):
+    ctx = st.session_state["last_result"]["ctx"]
+    result = st.session_state["last_result"]["result"]
+    eq = get_eq()
+    proj = result.get("projected_eq")
 
-        # Flowing single-column cards, matching the reference build's layout
-        # (falaksharmafs/auratune) -- not tabbed.
+    # Flowing single-column cards, matching the reference build's layout
+    # (falaksharmafs/auratune) -- not tabbed.
+    with st.container(border=True, key="detected_context_panel"):
+        c.eyebrow("Detected context")
+        c.stats(
+            [("Noise level", ctx.noise_level),
+             ("Content type", ctx.content_type),
+             ("Ambient", f"{ctx.ambient_rms_db} dB")],
+            hot=1, mono={2},
+        )
+
+    if result.get("noise_bucket"):
         with st.container(border=True):
-            c.eyebrow("Detected context")
-            c.stats(
-                [("Noise level", ctx.noise_level),
-                 ("Content type", ctx.content_type),
-                 ("Ambient", f"{ctx.ambient_rms_db} dB")],
-                hot=1, mono={2},
+            c.eyebrow("Noise type · local ML")
+            n1, n2 = st.columns([1.4, 1])
+            with n1:
+                c.stats([
+                    ("Bucket", result["noise_bucket"].replace("_", " ").title()),
+                    ("Model", _model_label(result.get("noise_model_used", "—"))),
+                ])
+            with n2:
+                c.meter("Confidence", result.get("noise_confidence", 0))
+            nprobs = result.get("noise_probabilities") or {}
+            if nprobs:
+                charts.probability_bars(
+                    {k.replace("_", " ").title(): v for k, v in nprobs.items()},
+                    accent="warm",
+                )
+    if result.get("genre_bucket"):
+        with st.container(border=True):
+            c.eyebrow("Genre · local ML")
+            g1, g2 = st.columns([1.4, 1])
+            with g1:
+                c.stats([
+                    ("Bucket", _genre_label(result["genre_bucket"])),
+                    ("Model", _model_label(result.get("genre_model_used", "—"))),
+                ])
+            with g2:
+                c.meter("Confidence", result.get("genre_confidence", 0))
+            probs = result.get("genre_probabilities") or {}
+            if probs:
+                charts.probability_bars(
+                    {_GENRE_CHART_NAMES.get(k, k): v for k, v in probs.items()},
+                    accent="accent",
+                )
+
+    # Combined into one line -- see agents/noise_agent.py / agents/genre_agent.py
+    # for the raw (developer-facing) unavailability reasons, deliberately not
+    # shown to the user here.
+    unavailable = []
+    if not result.get("noise_bucket") and result.get("noise_unavailable_reason"):
+        unavailable.append("Noise-type")
+    if not result.get("genre_bucket") and result.get("genre_unavailable_reason"):
+        unavailable.append("genre-aware")
+    if unavailable:
+        st.caption(f"{' and '.join(unavailable)} tuning isn't available in this deployment. "
+                   "The EQ still adapts based on overall noise level and content type.")
+
+    with st.container(border=True):
+        c.eyebrow("Live EQ curve")
+        freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
+        freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
+        charts.eq_curve(freqs_before, mag_before, freqs_after, mag_after, proj=proj)
+
+    if proj is not None:
+        with st.container(border=True):
+            c.eyebrow(f"Set these on {proj.spec_name}")
+            gmin = eq_spec.gain_min_db if eq_spec is not None else -12.0
+            gmax = eq_spec.gain_max_db if eq_spec is not None else 12.0
+            c.fader_rack(proj.bands, gain_min=gmin, gain_max=gmax,
+                       clipped=set(proj.clipped_freqs or []))
+
+            note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
+            if proj.clipped_freqs:
+                note += (" Bands outlined in red hit the app's range limit — "
+                        "that's the closest it can get.")
+            if not proj.has_preamp:
+                note += (" *This app has no preamp; the value is how much to lower the "
+                        "media/app volume so the boosts don't clip.")
+            st.caption(note)
+
+            with st.expander("Values as a table"):
+                st.table(proj.as_table_rows())
+
+            txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}"
+                            for r in proj.as_table_rows())
+            st.download_button("⬇ Download these settings (.txt)", txt,
+                               file_name=f"{_slugify(proj.spec_name)}_settings.txt")
+
+    with st.container(border=True):
+        c.eyebrow("Explanation")
+        st.info(result["explanation"])
+        cmd_source = result.get("command_parse_source", "none")
+        if cmd_source != "none":
+            st.caption("Your typed command was parsed by "
+                       + ("**the LLM**." if cmd_source == "llm"
+                          else "**keyword rules** (no API key, or the call failed)."))
+
+    with st.container(border=True):
+        c.eyebrow("Agent trace")
+        st.caption("One row per LangGraph node, in the order it ran.")
+        rows = []
+        for step in result.get("agent_trace", []):
+            status_tag = " (skipped)" if step["skipped"] else ""
+            llm_tag = ""
+            for call in step["llm_calls"]:
+                llm_tag = (f" · {call['provider_label']}" if call["used_llm"]
+                           else " · fallback")
+            detail_json = html.escape(json.dumps(step["detail"], indent=2, default=str))
+            rows.append(
+                f'<div class="at-trace-item{" skipped" if step["skipped"] else ""}">'
+                f'<div class="head">{step["step"]}. {step["label"]}{status_tag}'
+                f'<span class="meta">{step["duration_ms"]:.0f} ms{llm_tag}</span></div>'
+                f'<div class="summary">{step["summary"]}</div>'
+                f'<details><summary>Details — {step["description"]}</summary>'
+                f'<pre>{detail_json}</pre></details>'
+                f'</div>'
             )
+        st.markdown(f'<div class="at-trace">{"".join(rows)}</div>', unsafe_allow_html=True)
 
-        if result.get("noise_bucket"):
-            with st.container(border=True):
-                c.eyebrow("Noise type · local ML")
-                n1, n2 = st.columns([1.4, 1])
-                with n1:
-                    c.stats([
-                        ("Bucket", result["noise_bucket"].replace("_", " ").title()),
-                        ("Model", _model_label(result.get("noise_model_used", "—"))),
-                    ])
-                with n2:
-                    c.meter("Confidence", result.get("noise_confidence", 0))
-                nprobs = result.get("noise_probabilities") or {}
-                if nprobs:
-                    charts.probability_bars(
-                        {k.replace("_", " ").title(): v for k, v in nprobs.items()},
-                        accent="warm",
-                    )
-        elif result.get("noise_unavailable_reason"):
-            # The raw reason (result['noise_unavailable_reason']) is a
-            # developer-facing string -- local file paths, errno text --
-            # set in agents/noise_agent.py. Deliberately not shown to the
-            # user here; see agents/noise_agent.py if it needs to change.
-            st.caption("Noise-type tuning isn't available in this deployment. "
-                       "Your EQ still adapts based on overall noise level and content type.")
+    llm_calls = [call for s in result.get("agent_trace", []) for call in s["llm_calls"]]
+    with st.expander("LLM prompts (dev view)"):
+        if not llm_calls:
+            st.caption("No LLM call was attempted this run — the explainer "
+                       "always tries one, so this is unexpected.")
+        for call in llm_calls:
+            status = {"ok": "The model answered",
+                      "no_api_key": "No API key — deterministic fallback used",
+                      "error": "Call failed — deterministic fallback used"}.get(
+                          call["status"], call["status"])
+            st.markdown(f"**{call['purpose']}** — {status}"
+                        + (f" · `{call['model']}` ({call['provider_label']})" if call["model"] else "")
+                        + (f" · {call['latency_ms']:.0f} ms"
+                           if call["latency_ms"] else ""))
+            if call["error"]:
+                st.caption(call["error"])
+            st.caption("System prompt")
+            st.code(call["system_prompt"], language="text")
+            st.caption("User prompt")
+            st.code(call["user_prompt"], language="text")
+            if call["response"]:
+                st.caption("Response")
+                st.code(call["response"], language="text")
+            st.divider()
+        st.caption("API keys are stripped from everything shown here "
+                   "(agents/llm_client.py `redact()`).")
 
-        if result.get("genre_bucket"):
-            with st.container(border=True):
-                c.eyebrow("Genre · local ML")
-                g1, g2 = st.columns([1.4, 1])
-                with g1:
-                    c.stats([
-                        ("Bucket", _genre_label(result["genre_bucket"])),
-                        ("Model", _model_label(result.get("genre_model_used", "—"))),
-                    ])
-                with g2:
-                    c.meter("Confidence", result.get("genre_confidence", 0))
-                probs = result.get("genre_probabilities") or {}
-                if probs:
-                    charts.probability_bars(
-                        {_GENRE_CHART_NAMES.get(k, k): v for k, v in probs.items()},
-                        accent="accent",
-                    )
-        elif result.get("genre_unavailable_reason"):
-            # Same deliberate choice as the noise reason above -- see
-            # agents/genre_agent.py for the raw (developer-facing) string.
-            st.caption("Genre-aware tuning isn't available in this deployment. "
-                       "Your EQ still adapts based on room noise and content type.")
-
-        with st.container(border=True):
-            c.eyebrow("Live EQ curve")
-            freqs_before, mag_before = eq.frequency_response(result["baseline_curve"])
-            freqs_after, mag_after = eq.frequency_response(result["decided_curve"])
-            charts.eq_curve(freqs_before, mag_before, freqs_after, mag_after, proj=proj)
-
+    with st.expander("Raw deltas (debug)"):
+        dbg = {
+            "context_deltas": result["context_deltas"],
+            "command_deltas": result["command_deltas"],
+            "genre_deltas": result.get("genre_deltas"),
+            "genre_proxy_features": result.get("genre_proxy_features"),
+            "noise_deltas": result.get("noise_deltas"),
+            "noise_features": result.get("noise_features"),
+            "decided_curve": result["decided_curve"].to_dict(),
+        }
         if proj is not None:
-            with st.container(border=True):
-                c.eyebrow(f"Set these on {proj.spec_name}")
-                gmin = eq_spec.gain_min_db if eq_spec is not None else -12.0
-                gmax = eq_spec.gain_max_db if eq_spec is not None else 12.0
-                c.fader_rack(proj.bands, gain_min=gmin, gain_max=gmax,
-                           clipped=set(proj.clipped_freqs or []))
+            dbg["projected_eq"] = proj.to_dict()
+        st.json(dbg)
+else:
+    with st.container(border=True):
+        c.empty_state()
 
-                note = f"Curve fit within ±{proj.fit_error_db:.1f} dB of the ideal across bands."
-                if proj.clipped_freqs:
-                    note += (" Bands outlined in red hit the app's range limit — "
-                            "that's the closest it can get.")
-                if not proj.has_preamp:
-                    note += (" *This app has no preamp; the value is how much to lower the "
-                            "media/app volume so the boosts don't clip.")
-                st.caption(note)
-
-                with st.expander("Values as a table"):
-                    st.table(proj.as_table_rows())
-
-                txt = "\n".join(f"{r['Frequency']}\t{r['Set to (dB)']}"
-                                for r in proj.as_table_rows())
-                st.download_button("⬇ Download these settings (.txt)", txt,
-                                   file_name=f"{_slugify(proj.spec_name)}_settings.txt")
-
-        with st.container(border=True):
-            exp_source = result.get("explanation_source", "template")
-            if exp_source == "llm":
-                model = result.get("explanation_model", "an LLM")
-                provider = PROVIDER_LABELS.get(result.get("explanation_provider"), "")
-                badge = f"🤖 Written by {model}" + (f" ({provider})" if provider else "")
-            else:
-                badge = "📋 Written by the built-in template"
-            head, tag = st.columns([3, 2])
-            with head:
-                c.eyebrow("Explanation")
-            tag.markdown(f"<span class='at-chip'>{badge}</span>", unsafe_allow_html=True)
-            st.info(result["explanation"])
-            cmd_source = result.get("command_parse_source", "none")
-            if cmd_source != "none":
-                st.caption("Your typed command was parsed by "
-                           + ("**the LLM**." if cmd_source == "llm"
-                              else "**keyword rules** (no API key, or the call failed)."))
-
-        with st.container(border=True):
-            c.eyebrow("Agent trace")
-            st.caption("One row per LangGraph node, in the order it ran.")
-            for step in result.get("agent_trace", []):
-                icon = "⏭️" if step["skipped"] else "✅"
-                llm_tag = ""
-                for call in step["llm_calls"]:
-                    llm_tag = (f" · 🤖 {call['provider_label']}" if call["used_llm"]
-                               else " · 📋 fallback")
-                st.markdown(
-                    f"**{icon} {step['step']}. {step['label']}** "
-                    f"<span class='trace-meta'>{step['duration_ms']:.0f} ms{llm_tag}</span><br>"
-                    f"<span class='trace-summary'>{step['summary']}</span>",
-                    unsafe_allow_html=True)
-                with st.expander(f"Details — {step['description']}"):
-                    st.json(step["detail"])
-
-        llm_calls = [call for s in result.get("agent_trace", []) for call in s["llm_calls"]]
-        with st.expander("🔎 LLM prompts (dev view)"):
-            if not llm_calls:
-                st.caption("No LLM call was attempted this run — the explainer "
-                           "always tries one, so this is unexpected.")
-            for call in llm_calls:
-                status = {"ok": "✅ The model answered",
-                          "no_api_key": "📋 No API key — deterministic fallback used",
-                          "error": "⚠️ Call failed — deterministic fallback used"}.get(
-                              call["status"], call["status"])
-                st.markdown(f"**{call['purpose']}** — {status}"
-                            + (f" · `{call['model']}` ({call['provider_label']})" if call["model"] else "")
-                            + (f" · {call['latency_ms']:.0f} ms"
-                               if call["latency_ms"] else ""))
-                if call["error"]:
-                    st.caption(call["error"])
-                st.caption("System prompt")
-                st.code(call["system_prompt"], language="text")
-                st.caption("User prompt")
-                st.code(call["user_prompt"], language="text")
-                if call["response"]:
-                    st.caption("Response")
-                    st.code(call["response"], language="text")
-                st.divider()
-            st.caption("API keys are stripped from everything shown here "
-                       "(agents/llm_client.py `redact()`).")
-
-        with st.expander("Raw deltas (debug)"):
-            dbg = {
-                "context_deltas": result["context_deltas"],
-                "command_deltas": result["command_deltas"],
-                "genre_deltas": result.get("genre_deltas"),
-                "genre_proxy_features": result.get("genre_proxy_features"),
-                "noise_deltas": result.get("noise_deltas"),
-                "noise_features": result.get("noise_features"),
-                "decided_curve": result["decided_curve"].to_dict(),
-            }
-            if proj is not None:
-                dbg["projected_eq"] = proj.to_dict()
-            st.json(dbg)
-    else:
-        with st.container(border=True):
-            c.empty_state()
+with st.container(key="history_panel"):
+    with st.expander("History", expanded=False):
+        c.timeline(store.get_history(USER_ID, limit=8))
