@@ -141,8 +141,6 @@ def _run_tick(store, eq):
 # ---------------------------------------------------------------------------
 def _return_to_main() -> None:
     st.session_state.live_mode_enabled = st.session_state.live_mode_page
-    if not st.session_state.live_mode_enabled:
-        st.switch_page("app.py")
 
 
 title_col, mode_col = st.columns([7, 1])
@@ -155,6 +153,11 @@ with mode_col:
 st.caption("Keeps listening, keeps deciding, keeps the EQ correct -- no button to click. "
           "Sensing and smoothing here stand in for Parts 1 & 2 until those land; "
           "everything downstream (classification, agents, personalization) is the real pipeline.")
+
+# Same no-op-rerun-in-a-callback issue as app.py's toggle -- the navigation
+# has to happen here, in the main script body, not inside on_change.
+if not st.session_state.live_mode_enabled:
+    st.switch_page("app.py")
 
 top_l, top_r = st.columns([2, 1])
 with top_l:

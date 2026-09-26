@@ -354,8 +354,6 @@ def eq_spec_picker() -> EqualizerSpec | None:
 # ---------------------------------------------------------------------------
 def _open_live_mode() -> None:
     st.session_state.live_mode_enabled = st.session_state.live_mode_main
-    if st.session_state.live_mode_enabled:
-        st.switch_page("pages/3_Live_Mode.py")
 
 
 def _save_main_theme() -> None:
@@ -371,6 +369,13 @@ with theme_col:
 with live_col:
     st.write("")
     st.toggle("Live mode", key="live_mode_main", on_change=_open_live_mode)
+
+# st.switch_page()'s own rerun is a no-op from inside an on_change callback
+# (callbacks run before Streamlit's automatic rerun) -- so the toggle above
+# only ever updates session_state, and the actual navigation happens here,
+# in the main script body, on the rerun that follows.
+if st.session_state.live_mode_enabled:
+    st.switch_page("pages/3_Live_Mode.py")
 
 # ---------------------------------------------------------------------------
 # Layout -- side-by-side like the reference build (falaksharmafs/auratune):
