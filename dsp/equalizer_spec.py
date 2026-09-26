@@ -34,6 +34,10 @@ class EqualizerSpec:
     preamp_min_db: float = -12.0
     preamp_max_db: float = 0.0
     notes: str = ""
+    # Name of an integrations/ module that can apply this EQ to live audio
+    # instead of only printing slider values (currently "equalizer_apo").
+    # Empty for every phone/streaming-app EQ, which a human has to type in.
+    live_target: str = ""
 
     # -- quantisation helpers -------------------------------------------
     def _snap(self, value: float, step: float) -> float:

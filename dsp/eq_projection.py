@@ -48,6 +48,10 @@ class ProjectedEQ:
     clipped_freqs: List[float] = field(default_factory=list)
     ideal_freqs_hz: np.ndarray = field(default_factory=lambda: np.array([]))
     ideal_shape_db: np.ndarray = field(default_factory=lambda: np.array([]))
+    # Set when the spec names a live target (see EqualizerSpec.live_target)
+    # and project_curve was asked to apply it -- see apply_live below.
+    live_applied: bool = False
+    live_detail: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +61,8 @@ class ProjectedEQ:
             "fit_error_db": round(self.fit_error_db, 2),
             "clipped_freqs": self.clipped_freqs,
             "bands": [b.to_dict() for b in self.bands],
+            "live_applied": self.live_applied,
+            "live_detail": self.live_detail,
         }
 
     def as_table_rows(self) -> List[dict]:
@@ -75,12 +81,20 @@ def _fmt_hz(f: float) -> str:
     return f"{s} Hz"
 
 
-def project_curve(curve: TargetCurve, eq: ParametricEQ, spec: EqualizerSpec) -> ProjectedEQ:
+def project_curve(curve: TargetCurve, eq: ParametricEQ, spec: EqualizerSpec,
+                  apply_live: bool = False) -> ProjectedEQ:
     """Snap `curve` onto `spec`'s slider grid.
 
     The band values describe the curve's *shape* (relative to 0 dB); the
     curve's overall `volume_db` is folded into the preamp instead, because a
     graphic EQ has no "volume" slider.
+
+    apply_live: when True *and* the spec names a live target (currently only
+    Equalizer APO), also push the projected bands to that target so they land
+    on whatever is actually playing. Off by default: projection stays a pure
+    function unless a caller explicitly asks for the side effect. A target
+    that isn't installed is recorded on the result, never raised -- the
+    slider numbers are still correct and the app keeps working.
     """
     freqs, mag_db = eq.frequency_response(curve, n_points=1024)
     shape_db = mag_db - curve.volume_db          # strip the overall level
@@ -112,7 +126,7 @@ def project_curve(curve: TargetCurve, eq: ParametricEQ, spec: EqualizerSpec) -> 
 
     fit_error = float(np.sqrt(np.mean(np.square(residuals)))) if residuals else 0.0
 
-    return ProjectedEQ(
+    projected = ProjectedEQ(
         spec_name=spec.name,
         bands=bands,
         preamp_db=preamp,
@@ -122,3 +136,32 @@ def project_curve(curve: TargetCurve, eq: ParametricEQ, spec: EqualizerSpec) -> 
         ideal_freqs_hz=freqs,
         ideal_shape_db=shape_db,
     )
+
+    if apply_live and spec.live_target:
+        _apply_live(projected, spec)
+    return projected
+
+
+def _apply_live(projected: ProjectedEQ, spec: EqualizerSpec) -> None:
+    """Push a projection to a live EQ, recording what happened on it.
+
+    Imported lazily so dsp/ keeps no hard dependency on integrations/, and
+    so a machine without the live EQ installed pays nothing for it.
+    """
+    if spec.live_target != "equalizer_apo":
+        projected.live_detail = f"unknown live target {spec.live_target!r}"
+        return
+    try:
+        from integrations.equalizer_apo import (EqualizerAPOUnavailable,
+                                                write_projection)
+    except Exception as exc:  # pragma: no cover -- import guard
+        projected.live_detail = f"live target unavailable: {exc}"
+        return
+    try:
+        result = write_projection(projected)
+    except EqualizerAPOUnavailable as exc:
+        projected.live_detail = str(exc)
+        return
+    projected.live_applied = True
+    projected.live_detail = (f"Applied live: {result.filters} filters + "
+                             f"{result.preamp_db:+.1f} dB preamp -> {result.path}")
