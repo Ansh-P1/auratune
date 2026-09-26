@@ -6,10 +6,12 @@ the app can notice the room changing (quiet -> noisy -> quiet) on its own,
 without a user clicking "Run adaptation". Runs in a Python thread so it
 never blocks Streamlit's main loop.
 
-Debounce rule: a context change is only reported once the new
-(noise_level, content_type) pair has shown up for 2 consecutive samples
-in a row -- a single stray cough or door-slam shouldn't trigger a
-re-adaptation.
+Debounce rule: a (noise_level, content_type) reading is only reported
+once it has shown up for 2 consecutive samples in a row -- a single stray
+cough or door-slam shouldn't trigger a re-adaptation. This includes the
+very first stable reading (the starting baseline), so a subscriber gets
+an on_change() call to seed its initial state instead of waiting on the
+first real transition.
 
 Coordinate with whoever owns the Streamlit page on how results get back
 into st.session_state: on_change()'s callback fires from a background
@@ -110,15 +112,12 @@ class LiveMonitor:
             self._pending_streak = 1
 
         if self._pending_streak >= self._debounce_samples:
-            is_initial_baseline = self._last_confirmed is None
             self._last_confirmed = ctx
             self._pending_key = None
             self._pending_streak = 0
-            if is_initial_baseline:
-                # Establishing the starting state isn't a "change" -- there
-                # was nothing to change from. Only fire for genuine
-                # transitions after a baseline exists.
-                return None
+            # Fires here even for the very first stable reading (the
+            # starting baseline) -- a subscriber needs that call to seed
+            # its own initial state, not just later transitions.
             for callback in self._callbacks:
                 callback(ctx)
             return ctx
