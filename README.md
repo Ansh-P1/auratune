@@ -24,10 +24,12 @@
 | 🎬 **Knows the content** | Podcast / Music / Movie + genre/mood (8 buckets, 114k-track model) |
 | 🧠 **Decides** | LangGraph pipeline blends profile + context + your live command (`"less bass"`) into a target curve |
 | 🎚️ **Maps to YOUR EQ** | Snaps the ideal curve onto your actual app's sliders — upload a screenshot and it reads it |
+| 🔊 **Applies system-wide** | Equalizer APO integration writes Windows EQ directly (writer verified working; live auto-apply UI trigger in progress) |
+| 🔄 **Keeps adapting** | Live Mode dashboard tests debounce & smooth glide transitions (tested via sandbox runner; mic sensor wiring in progress) |
 | 💬 **Explains** | One sentence, no jargon — plus a full agent trace |
 
 ```
-🎵 Audio + 🎙️ Ambient Mic  →  👁 Perception (Demucs / HPSS + Classifiers)  →  🤖 LangGraph (Profile → Decision → Explainer)  →  🎛️ Parametric EQ  →  📊 Streamlit
+🎵 Audio + 🎙️ Ambient Mic  →  👁 Perception (Demucs / HPSS + Classifiers)  →  🤖 LangGraph (Profile → Decision → Explainer)  →  🎛️ Parametric EQ  →  📊 Streamlit / 🔊 Equalizer APO
 ```
 
 ---
@@ -49,22 +51,24 @@ streamlit run app.py
 
 1. Pick a **Scenario** — `Quiet + Podcast` / `Noisy + Music` / `Home + Movie` or **🎙️ Real-time (10s mic capture)** for your actual room
 2. (optional) Type a command — *“make voices clearer”*, *“less bass, room is boomy”*
-3. Tell it **Your EQ app** — screenshot / preset / manual
+3. Tell it **Your EQ app** — screenshot / preset / manual (or pick **Equalizer APO** for system-wide config specs)
 4. Hit **▶ Run adaptation** → live vs stored curve + exact slider values + one-sentence *why*
+5. (optional) Switch to **Live Mode** (sidebar → *Live Mode*) — watch real-time room adaptation, debounce, and smooth curve transitions in action
 
 History panel on the left keeps every run.
 
 ---
 
-### 🎚️ Your Real EQ — 3 ways
+### 🎚️ Your Real EQ — 4 ways
 
 Every EQ is a fixed grid (N bands, range, step). AuraTune samples the ideal curve at your frequencies, snaps to your step, and computes a safe preamp.
 
 | Method | How |
 |---|---|
 | **📷 Screenshot** | Upload your EQ screen → Gemini (free tier) or Claude reads bands/step/range → you confirm |
-| **📦 Preset** | `wavelet_9band` · `iso_10band` · `spotify_5band` · `car_3band` + any `eq_specs/*.json` |
+| **📦 Preset** | `wavelet_9band` · `iso_10band` · `spotify_5band` · `car_3band` · `equalizer_apo` + any `eq_specs/*.json` |
 | **✏️ Manual** | Type bands + range + step → *Save to eq_specs/* for next time |
+| **🔊 Equalizer APO** | Pick the APO preset → AuraTune formats & writes system-wide EQ configs (writer verified; UI live auto-apply hookup underway). Windows only. Setup → [`docs/equalizer_apo_setup.md`](docs/equalizer_apo_setup.md) |
 
 > Tip: Presets are starting points — edit range/step to match what your app *actually* shows (e.g. Wavelet preamp → −76.5 dB).
 
@@ -109,11 +113,13 @@ All optional — app runs without any of them:
 | `GROQ_API_KEY` | Same as above via `openai/gpt-oss-120b` | — |
 | `GEMINI_API_KEY` | Screenshot reading (free tier, [get key](https://aistudio.google.com/apikey)) | Claude or manual entry |
 | `MONGO_URI` | Persistent profile storage | `data/profiles.local.json` |
+| `AURATUNE_APO_CONFIG` | Custom path to Equalizer APO's `config.txt` | `C:\Program Files\EqualizerAPO\config\config.txt` |
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # or GROQ_API_KEY=gsk_...
 export GEMINI_API_KEY=AIza...         # for screenshot reading
 export MONGO_URI=mongodb+srv://...    # for shared profiles
+export AURATUNE_APO_CONFIG=...        # only if APO is installed elsewhere
 # or put them in a local .env (gitignored) — see config.py
 ```
 
@@ -122,10 +128,13 @@ export MONGO_URI=mongodb+srv://...    # for shared profiles
 ### ✅ Validate & Test
 
 ```bash
-python3 validation/generate_traces.py   # 3 traces → validation/output/ (PNG curves + report.md)
+python3 validation/generate_traces.py      # 3 traces → validation/output/ (PNG curves + report.md)
+python3 validation/live_mode_eval.py       # scripted live loop → reaction latency + smoothness report
 python3 tests/test_dsp.py
 python3 tests/test_eq_projection.py
-python3 tests/test_classifier.py        # needs librosa
+python3 tests/test_classifier.py           # needs librosa
+python3 tests/test_equalizer_apo.py        # Equalizer APO renderer/writer (runs on any OS)
+python3 tests/test_live_mode_fakes.py      # debounce + curve ramping
 ```
 
 | Scenario | Expected | Status |
@@ -133,6 +142,7 @@ python3 tests/test_classifier.py        # needs librosa
 | Quiet + Podcast | Minimal compensation, near stored curve | ✅ |
 | Noisy + Music | Presence boost +3.5 dB, bass −2.5 dB | ✅ |
 | Home + Movie | Switches to movie target curve | ✅ |
+| Live: quiet → noisy → quiet | Avg 1-tick latency, 0 flip-flops, smooth glides | ✅ |
 
 ---
 
@@ -149,15 +159,18 @@ python3 tests/test_classifier.py        # needs librosa
 
 ```
 app.py                    → Streamlit dashboard (entry point)
+pages/3_Live_Mode.py      → Real-time adaptive listening page (sidebar nav)
 config.py                 → env-driven settings
 dsp/                      → parametric_eq.py · equalizer_spec.py · eq_projection.py
 perception/               → context/genre/noise classifiers · stem separation (Demucs→HPSS) · live_capture · eq_app_reader
 agents/                   → profile · noise · genre · eq_decision · projection · explainer + graph.py (LangGraph)
+integrations/             → equalizer_apo.py (live system-wide EQ on Windows)
 data/db.py                → MongoDB with local-JSON fallback
-eq_specs/                 → one JSON per real EQ app
+eq_specs/                 → one JSON per real EQ app (incl. equalizer_apo.json)
 ml/                       → train.py · train_noise.py · model_def.py · models/ (gitignored)
-validation/               → generate_traces.py
-tests/                    → test_*.py
+validation/               → generate_traces.py · live_mode_eval.py · live_mode_fakes.py
+tests/                    → test_*.py (incl. test_equalizer_apo, test_live_mode_fakes)
+docs/                     → equalizer_apo_setup.md
 ```
 
 </details>
@@ -173,6 +186,8 @@ Built sandbox-first, so every integration is real with a documented fallback —
 - **MongoDB** — real `pymongo`, else transparent local JSON
 - **Genre ML** — 114k real tracks; 11/13 features estimated from signal via `librosa`, 2 pinned (see `ml/README.md`)
 - **Noise ML** — 2k ESC-50 clips; zero proxy gap — same `extract_noise_features()` in train & inference
+- **Equalizer APO** — real atomic config writes when installed (Windows); `AURATUNE_APO_CONFIG` lets the renderer/writer run anywhere for testing (writer verified; auto-apply UI integration in progress)
+- **Live Mode** — real classification + agent pipeline per tick; continuous sensing (`LiveMonitor` merged in #23) and curve smoothing use stand-ins (`validation/live_mode_fakes.py`) until UI wiring lands
 
 DSP, LangGraph wiring, and UI run for real, no mocking.
 
