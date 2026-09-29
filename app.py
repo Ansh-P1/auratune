@@ -26,6 +26,7 @@ from pathlib import Path
 
 import streamlit as st
 
+import threading
 from dsp.parametric_eq import ParametricEQ
 from dsp.equalizer_spec import EqualizerSpec, all_specs, save_spec
 from perception.eq_app_reader import read_equalizer_screenshot
@@ -38,6 +39,8 @@ from data.db import ProfileStore
 from agents.graph import run_pipeline
 from agents.llm_client import PROVIDER_LABELS
 from agents.spec_edit_parser import parse_spec_edit
+from perception.live_monitor import LiveMonitor
+from agents.live_loop import LiveLoop
 
 from ui import theme
 from ui import components as c
@@ -382,6 +385,11 @@ if st.session_state.live_mode_enabled:
 # inputs in a narrower left column, results in a taller right column.
 # ---------------------------------------------------------------------------
 store = get_store()
+if "live_monitor" not in st.session_state:
+    st.session_state["live_monitor"] = None
+
+if "live_loop" not in st.session_state:
+    st.session_state["live_loop"] = None
 
 sub_l, sub_r = st.columns(2, gap="medium")
 
@@ -422,7 +430,8 @@ with sub_l:
             )
             if youtube_url.strip():
                 st.video(youtube_url.strip())
-
+        if scenario_key == LIVE_LOOP_KEY:
+            st.info("Continuous real-time mode: the app keeps listening and adapting while you play music or talk. ")
         user_command = st.text_input(
             "Live command (optional)",
             placeholder="e.g. make voices clearer, less bass",
