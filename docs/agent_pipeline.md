@@ -37,14 +37,14 @@ no API key set. The LLM is Claude when `ANTHROPIC_API_KEY` is set, or Groq
 (`GROQ_API_KEY`, OpenAI-compatible endpoint) otherwise — see
 `active_provider()` in `agents/llm_client.py`.
 
-| # | Node | Calls an LLM? | If the call can't happen |
-|---|------|---------------|--------------------------|
-| 1 | `profile_agent` | No | — |
-| 2 | `noise_agent` | No | No-ops if there's no ambient audio or no trained model |
-| 3 | `genre_agent` | No | No-ops unless the content is music *and* a model exists |
-| 4 | `eq_decision_agent` | Yes — **only** to parse a typed command into dB deltas | Keyword regexes in `_COMMAND_KEYWORDS` |
-| 5 | `projection_agent` | No | No-ops if no EQ app is selected |
-| 6 | `explainer_agent` | Yes — to phrase the sentence | Templated sentence from the same deltas |
+| #   | Node                | Calls an LLM?                                          | If the call can't happen                                |
+| --- | ------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
+| 1   | `profile_agent`     | No                                                     | —                                                       |
+| 2   | `noise_agent`       | No                                                     | No-ops if there's no ambient audio or no trained model  |
+| 3   | `genre_agent`       | No                                                     | No-ops unless the content is music _and_ a model exists |
+| 4   | `eq_decision_agent` | Yes — **only** to parse a typed command into dB deltas | Keyword regexes in `_COMMAND_KEYWORDS`                  |
+| 5   | `projection_agent`  | No                                                     | No-ops if no EQ app is selected                         |
+| 6   | `explainer_agent`   | Yes — to phrase the sentence                           | Templated sentence from the same deltas                 |
 
 The context/noise/genre deltas are **never** LLM-decided: they come from
 lookup tables (`_NOISE_ADJUSTMENTS`, `dsp/noise_curves.py`,
@@ -69,3 +69,17 @@ Each attempted LLM call is recorded as an `LLMCall`
 Both prompts and the response are visible in the **LLM prompts (dev
 view)** expander, with anything matching an API key pattern stripped by
 `redact()` before it renders.
+
+## Continuous LiveLoop
+
+AuraTune also supports a continuous live adaptation mode through `LiveLoop`.
+
+When the `LiveMonitor` confirms a context change, `LiveLoop` runs the existing adaptation pipeline and smoothly transitions from the current EQ curve to the new target curve.
+
+- **Context cooldown:** 8 seconds
+- **EQ transition:** 1.5 seconds
+- **Interpolation steps:** 15
+- **Curve callback:** `on_curve_step(curve, is_final)`
+- The final callback step always emits the exact target curve.
+
+The existing 10-second real-time capture mode remains available separately.
