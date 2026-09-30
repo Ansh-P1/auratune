@@ -20,10 +20,11 @@ from dsp.eq_projection import project_curve
 
 
 def run_projection_agent(state: dict, eq: ParametricEQ,
-                         spec: Optional[EqualizerSpec] = None) -> dict:
+                         spec: Optional[EqualizerSpec] = None,
+                         apply_live: bool = False) -> dict:
     spec = spec or state.get("equalizer_spec")
     if spec is None:
         state["projected_eq"] = None
         return state
-    state["projected_eq"] = project_curve(state["decided_curve"], eq, spec)
+    state["projected_eq"] = project_curve(state["decided_curve"], eq, spec, apply_live=apply_live)
     return state

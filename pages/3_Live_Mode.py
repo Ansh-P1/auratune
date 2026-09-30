@@ -43,6 +43,7 @@ from datetime import datetime
 import streamlit as st
 
 from dsp.curve_smoothing import CurveRamper
+from dsp.equalizer_spec import all_specs
 from dsp.parametric_eq import ParametricEQ, TargetCurve
 from perception.context_classifier import Context
 from perception.live_capture import is_available as mic_is_available
@@ -105,6 +106,7 @@ st.session_state.setdefault("live_last_ctx", None)
 st.session_state.setdefault("live_last_result", None)
 st.session_state.setdefault("live_command_state", {"text": ""})
 st.session_state.setdefault("live_last_error", None)
+st.session_state.setdefault("live_apply_state", {"spec": None, "apply_live": False})
 
 
 def _dominant_field_delta(deltas: dict):
@@ -132,16 +134,25 @@ def _make_demo_clip_source(cycle=("quiet_podcast", "noisy_music", "home_movie"),
 
 
 def _make_live_reaction(store, eq, events_queue: "queue.Queue", command_state: dict,
-                        cooldown_s: float = COOLDOWN_S):
+                        apply_state: dict, cooldown_s: float = COOLDOWN_S):
     """Returns a LiveMonitor.on_change callback: real cooldown gate + real
     pipeline run, result handed to the main thread via the queue. Runs on
     LiveMonitor's background thread -- must never touch st.session_state.
 
-    command_state is a plain dict (e.g. {"text": "more bass"}) that the main
-    thread updates in place every rerun as the user types -- reading a
-    single dict key like this from another thread is safe in CPython (the
-    GIL makes the read/write atomic), so no extra locking is needed just for
-    this, unlike the cooldown timestamp below which involves a check-then-set.
+    command_state and apply_state are plain dicts the main thread updates in
+    place every rerun (as the user types a command, or changes the EQ app /
+    apply-live toggle) -- reading a single dict key like this from another
+    thread is safe in CPython (the GIL makes the read/write atomic), so no
+    extra locking is needed just for this, unlike the cooldown timestamp
+    below which involves a check-then-set.
+
+    apply_state["apply_live"] + ["spec"] control whether every confirmed
+    adaptation is also pushed live to a real EQ target (currently only
+    Equalizer APO -- see dsp/eq_projection.py's apply_live, which was wired
+    all the way through run_pipeline/build_graph/run_projection_agent for
+    this). When on, this actually rewrites Equalizer APO's config.txt on
+    the user's machine on every confirmed change -- a real, audible,
+    system-wide side effect, not just a chart update.
 
     Any exception from run_pipeline (a slow/failed LLM call, a missing
     model file, etc.) is caught and reported as an error event instead of
@@ -160,8 +171,11 @@ def _make_live_reaction(store, eq, events_queue: "queue.Queue", command_state: d
                 return
             cooldown_state["last_run"] = now
         command = command_state.get("text", "").strip()
+        spec = apply_state.get("spec")
+        apply_live = bool(apply_state.get("apply_live")) and spec is not None
         try:
-            result = run_pipeline(store, eq, USER_ID, ctx, command, sample_rate=SR)
+            result = run_pipeline(store, eq, USER_ID, ctx, command, sample_rate=SR,
+                                  equalizer_spec=spec, apply_live=apply_live)
         except Exception as exc:
             events_queue.put({"error": f"{type(exc).__name__}: {exc}"})
             return
@@ -196,7 +210,8 @@ def _reset_live_state(interval_sec: float, eq: ParametricEQ):
     use_real_mic = mic_is_available()
     if not use_real_mic:
         monitor.set_clip_source(_make_demo_clip_source())
-    monitor.on_change(_make_live_reaction(get_store(), eq, q, st.session_state.live_command_state))
+    monitor.on_change(_make_live_reaction(get_store(), eq, q, st.session_state.live_command_state,
+                                          st.session_state.live_apply_state))
     monitor.start(sample_rate=SR, interval_sec=interval_sec)
 
     st.session_state.live_monitor = monitor
@@ -248,6 +263,10 @@ def _drain_queue(eq: ParametricEQ):
 
         deltas = eq.delta(old_curve, new_curve)
         text = _describe_change(st.session_state.live_last_ctx, ctx, deltas)
+        projected = result.get("projected_eq")
+        if projected is not None and projected.live_detail:
+            live_icon = "✅" if projected.live_applied else "⚠"
+            text += f" -- {live_icon} {projected.live_detail}"
         st.session_state.live_log.insert(0, {"ts": datetime.now().strftime("%H:%M:%S"), "text": text})
         st.session_state.live_log = st.session_state.live_log[:20]
 
@@ -280,6 +299,38 @@ st.caption("Keeps listening, keeps deciding, keeps the EQ correct -- no button t
 # has to happen here, in the main script body, not inside on_change.
 if not st.session_state.live_mode_enabled:
     st.switch_page("app.py")
+
+_specs = all_specs()
+_eq_options = ["(none, just show the curve)"] + list(_specs.keys())
+_default_key = "equalizer_apo" if "equalizer_apo" in _specs else _eq_options[0]
+_default_idx = _eq_options.index(_default_key) if _default_key in _eq_options else 0
+
+eq_l, eq_r = st.columns([2, 1])
+with eq_l:
+    _selected_key = st.selectbox(
+        "EQ app for live apply",
+        _eq_options,
+        index=_default_idx,
+        format_func=lambda k: _specs[k].name if k in _specs else k,
+        help="Pick your real EQ app so Live Mode can show the exact slider values -- "
+             "and, for apps that support it, push them live automatically.",
+    )
+selected_spec = _specs.get(_selected_key)
+with eq_r:
+    st.write("")
+    apply_live_toggle = False
+    if selected_spec is not None and selected_spec.live_target:
+        apply_live_toggle = st.checkbox(
+            f"Apply live to {selected_spec.name}",
+            value=bool(st.session_state.live_apply_state.get("apply_live", False)),
+            help="Rewrites Equalizer APO's config.txt on every confirmed adaptation -- "
+                 "a real, audible, system-wide change to whatever's currently playing, "
+                 "not just an update to the chart below.",
+        )
+    elif selected_spec is not None:
+        st.caption(f"{selected_spec.name} has no live target -- slider values shown, not auto-applied.")
+st.session_state.live_apply_state["spec"] = selected_spec
+st.session_state.live_apply_state["apply_live"] = apply_live_toggle
 
 top_l, top_r = st.columns([2, 1])
 with top_r:

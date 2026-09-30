@@ -75,7 +75,8 @@ def build_graph(store: ProfileStore, eq: ParametricEQ,
                 ambient_audio: Optional[np.ndarray] = None,
                 sample_rate: int = 44100,
                 genre_model: str = "auto",
-                noise_model: str = "auto"):
+                noise_model: str = "auto",
+                apply_live: bool = False):
     graph = StateGraph(PipelineState)
 
     # Every node goes through traced() (agents/trace.py), which times it and
@@ -85,7 +86,7 @@ def build_graph(store: ProfileStore, eq: ParametricEQ,
     graph.add_node("noise_agent", traced("noise_agent", lambda s: run_noise_agent(s, ambient_audio, sample_rate, noise_model)))
     graph.add_node("genre_agent", traced("genre_agent", lambda s: run_genre_agent(s, content_audio, sample_rate, genre_model)))
     graph.add_node("eq_decision_agent", traced("eq_decision_agent", run_eq_decision_agent))
-    graph.add_node("projection_agent", traced("projection_agent", lambda s: run_projection_agent(s, eq, equalizer_spec)))
+    graph.add_node("projection_agent", traced("projection_agent", lambda s: run_projection_agent(s, eq, equalizer_spec, apply_live)))
     graph.add_node("explainer_agent", traced("explainer_agent", lambda s: run_explainer_agent(s, eq)))
 
     graph.set_entry_point("profile_agent")
@@ -111,6 +112,7 @@ def run_pipeline(
     sample_rate: int = 44100,
     genre_model: str = "auto",
     noise_model: str = "auto",
+    apply_live: bool = False,
 ) -> PipelineState:
     """Convenience one-shot call used by the Streamlit app and validation script.
 
@@ -121,9 +123,13 @@ def run_pipeline(
     agents/noise_agent.py) to run the local noise-type classifier. Both
     optional -- omit either and the pipeline behaves exactly as before
     that classifier existed.
+    apply_live: forwarded to dsp.eq_projection.project_curve -- when True
+    and equalizer_spec names a live target (currently only Equalizer APO),
+    the projected curve is also pushed to that target so it lands on
+    whatever's actually playing, not just returned for display.
     """
     app = build_graph(store, eq, equalizer_spec, content_audio, ambient_audio,
-                      sample_rate, genre_model, noise_model)
+                      sample_rate, genre_model, noise_model, apply_live)
     result = app.invoke({
         "user_id": user_id,
         "context": context,
