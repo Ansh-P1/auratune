@@ -103,6 +103,8 @@ st.session_state.setdefault("live_pending_steps", [])
 st.session_state.setdefault("live_log", [])
 st.session_state.setdefault("live_last_ctx", None)
 st.session_state.setdefault("live_last_result", None)
+st.session_state.setdefault("live_command_state", {"text": ""})
+st.session_state.setdefault("live_last_error", None)
 
 
 def _dominant_field_delta(deltas: dict):
@@ -129,10 +131,25 @@ def _make_demo_clip_source(cycle=("quiet_podcast", "noisy_music", "home_movie"),
     return _next
 
 
-def _make_live_reaction(store, eq, events_queue: "queue.Queue", cooldown_s: float = COOLDOWN_S):
+def _make_live_reaction(store, eq, events_queue: "queue.Queue", command_state: dict,
+                        cooldown_s: float = COOLDOWN_S):
     """Returns a LiveMonitor.on_change callback: real cooldown gate + real
     pipeline run, result handed to the main thread via the queue. Runs on
-    LiveMonitor's background thread -- must never touch st.session_state."""
+    LiveMonitor's background thread -- must never touch st.session_state.
+
+    command_state is a plain dict (e.g. {"text": "more bass"}) that the main
+    thread updates in place every rerun as the user types -- reading a
+    single dict key like this from another thread is safe in CPython (the
+    GIL makes the read/write atomic), so no extra locking is needed just for
+    this, unlike the cooldown timestamp below which involves a check-then-set.
+
+    Any exception from run_pipeline (a slow/failed LLM call, a missing
+    model file, etc.) is caught and reported as an error event instead of
+    propagating -- an uncaught exception here would otherwise escape
+    LiveMonitor's sampling loop and silently kill the whole background
+    thread, which looks exactly like "the mic stopped being detected" with
+    zero indication of why.
+    """
     cooldown_state = {"last_run": None}
     lock = threading.Lock()
 
@@ -142,7 +159,12 @@ def _make_live_reaction(store, eq, events_queue: "queue.Queue", cooldown_s: floa
             if cooldown_state["last_run"] is not None and now - cooldown_state["last_run"] < cooldown_s:
                 return
             cooldown_state["last_run"] = now
-        result = run_pipeline(store, eq, USER_ID, ctx, "", sample_rate=SR)
+        command = command_state.get("text", "").strip()
+        try:
+            result = run_pipeline(store, eq, USER_ID, ctx, command, sample_rate=SR)
+        except Exception as exc:
+            events_queue.put({"error": f"{type(exc).__name__}: {exc}"})
+            return
         events_queue.put({"ctx": ctx, "result": result})
 
     return on_context_change
@@ -174,7 +196,7 @@ def _reset_live_state(interval_sec: float, eq: ParametricEQ):
     use_real_mic = mic_is_available()
     if not use_real_mic:
         monitor.set_clip_source(_make_demo_clip_source())
-    monitor.on_change(_make_live_reaction(get_store(), eq, q))
+    monitor.on_change(_make_live_reaction(get_store(), eq, q, st.session_state.live_command_state))
     monitor.start(sample_rate=SR, interval_sec=interval_sec)
 
     st.session_state.live_monitor = monitor
@@ -210,6 +232,13 @@ def _drain_queue(eq: ParametricEQ):
         except queue.Empty:
             break
         drained = True
+        if "error" in item:
+            st.session_state.live_last_error = item["error"]
+            st.session_state.live_log.insert(0, {"ts": datetime.now().strftime("%H:%M:%S"),
+                                                  "text": f"⚠ pipeline error: {item['error']}"})
+            st.session_state.live_log = st.session_state.live_log[:20]
+            continue
+        st.session_state.live_last_error = None
         ctx = item["ctx"]
         result = item["result"]
         new_curve = result["decided_curve"]
@@ -272,6 +301,17 @@ with top_l:
         st.caption("\U0001F3A4 Listening on the real microphone" if st.session_state.live_using_real_mic
                    else "\U0001F50C No microphone detected -- cycling the 3 demo scenarios instead")
 
+command_text = st.text_input(
+    "Live command (optional)",
+    value=st.session_state.live_command_state.get("text", ""),
+    placeholder="e.g. more bass, brighter, louder, less bass, make voices clearer",
+    help="Applied to every future automatic adaptation while Auto mode is on -- takes "
+         "effect from the next confirmed room reading, not instantly (same debounce + "
+         "8s cooldown as everything else here). Parsed by the LLM if one's configured, "
+         "otherwise matched against keyword rules (see agents/eq_decision_agent.py).",
+)
+st.session_state.live_command_state["text"] = command_text
+
 store = get_store()
 eq = get_eq()
 
@@ -279,6 +319,9 @@ if st.session_state.live_on:
     _drain_queue(eq)
     if st.session_state.live_pending_steps:
         st.session_state.live_current_curve = st.session_state.live_pending_steps.pop(0)
+
+if st.session_state.live_last_error:
+    st.error(f"Last live adaptation failed: {st.session_state.live_last_error}")
 
 result_container = st.container(border=True)
 with result_container:
