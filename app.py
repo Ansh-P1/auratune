@@ -430,8 +430,7 @@ with sub_l:
             )
             if youtube_url.strip():
                 st.video(youtube_url.strip())
-        if scenario_key == LIVE_LOOP_KEY:
-            st.info("Continuous real-time mode: the app keeps listening and adapting while you play music or talk. ")
+
         user_command = st.text_input(
             "Live command (optional)",
             placeholder="e.g. make voices clearer, less bass",
